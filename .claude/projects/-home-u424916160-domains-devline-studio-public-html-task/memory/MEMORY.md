@@ -1,0 +1,1 @@
+- [PHP 8.3 CLI path](project_php83_path.md) — Use /opt/alt/php83/usr/bin/php for artisan, not default php

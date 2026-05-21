@@ -1,0 +1,19 @@
+{
+  "name": "whatsapp-web-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Read-only WhatsApp Web inbound bridge for Laravel inbox",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.0",
+    "axios": "^1.7.9",
+    "dotenv": "^16.4.7",
+    "pino": "^9.5.0",
+    "qrcode": "^1.5.4",
+    "qrcode-terminal": "^0.12.0"
+  }
+}
