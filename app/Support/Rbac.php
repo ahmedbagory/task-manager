@@ -47,6 +47,7 @@ final class Rbac
         'roles.view',
         'roles.manage',
         'reports.view',
+        'mobile_notifications.view',
         'settings.api.manage',
         'mobile_notifications.send',
     ];
@@ -71,6 +72,7 @@ final class Rbac
             'whatsapp_contacts.view',
             'whatsapp_contacts.manage',
             'reports.view',
+            'mobile_notifications.view',
             'mobile_notifications.send',
         ],
         self::SUPERVISOR => [

@@ -6,7 +6,6 @@ use App\Models\DeviceToken;
 use App\Models\Task;
 use App\Models\User;
 use App\Support\Rbac;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -121,6 +120,27 @@ class FcmNotificationService
         array $data = [],
         ?string $deviceId = null,
     ): int {
+        return $this->sendNotificationToUser(
+            recipient: $recipient,
+            title: $title,
+            body: $body,
+            data: $data,
+            deviceId: $deviceId,
+        );
+    }
+
+    public function countTokensForUser(User $recipient, ?string $deviceId = null): int
+    {
+        return count($this->tokensForUser($recipient, $deviceId));
+    }
+
+    public function sendNotificationToUser(
+        User $recipient,
+        string $title,
+        string $body,
+        array $data = [],
+        ?string $deviceId = null,
+    ): int {
         $tokens = $this->tokensForUser($recipient, $deviceId);
 
         if (empty($tokens)) {
@@ -130,45 +150,6 @@ class FcmNotificationService
         $this->sendTokens($tokens, $title, $body, $data);
 
         return count($tokens);
-    }
-
-    /**
-     * @param  iterable<int, User>  $recipients
-     * @return array{targeted_users: int, targeted_users_with_devices: int, targeted_devices: int}
-     */
-    public function sendManualNotification(
-        iterable $recipients,
-        string $title,
-        string $body,
-        array $data = [],
-    ): array {
-        /** @var Collection<int, User> $users */
-        $users = collect($recipients)
-            ->filter(fn ($recipient): bool => $recipient instanceof User)
-            ->unique(fn (User $recipient): int => $recipient->id)
-            ->values();
-
-        $targetedUsersWithDevices = 0;
-        $targetedDevices = 0;
-
-        foreach ($users as $recipient) {
-            $tokens = $this->tokensForUser($recipient);
-
-            if ($tokens === []) {
-                continue;
-            }
-
-            $targetedUsersWithDevices++;
-            $targetedDevices += count($tokens);
-
-            $this->sendTokens($tokens, $title, $body, $data);
-        }
-
-        return [
-            'targeted_users' => $users->count(),
-            'targeted_users_with_devices' => $targetedUsersWithDevices,
-            'targeted_devices' => $targetedDevices,
-        ];
     }
 
     /**

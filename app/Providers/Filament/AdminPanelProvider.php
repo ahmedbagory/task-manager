@@ -5,6 +5,7 @@ namespace App\Providers\Filament;
 use App\Filament\Pages\ApiSettings;
 use App\Filament\Pages\WhatsAppSession;
 use App\Filament\Resources\Departments\DepartmentResource;
+use App\Filament\Resources\MobileNotifications\MobileNotificationResource;
 use App\Filament\Resources\Roles\RoleResource;
 use App\Filament\Resources\TaskCategories\TaskCategoryResource;
 use App\Filament\Resources\TaskReports\TaskReportResource;
@@ -70,6 +71,7 @@ class AdminPanelProvider extends PanelProvider
             )
             ->resources([
                 DepartmentResource::class,
+                MobileNotificationResource::class,
                 TaskCategoryResource::class,
                 TaskResource::class,
                 TaskReportResource::class,
