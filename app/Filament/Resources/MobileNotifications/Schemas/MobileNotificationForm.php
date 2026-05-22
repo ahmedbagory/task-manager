@@ -53,7 +53,7 @@ class MobileNotificationForm
                             ->live()
                             ->afterStateUpdated(fn (Set $set) => $set('target_unit_ids', [])),
                         Select::make('target_unit_ids')
-                            ->label(__('Specific Units / Branches'))
+                            ->label(__('Specific Units'))
                             ->options(fn (Get $get): array => app(DepartmentHierarchyService::class)->childOptionsGroupedByParent(
                                 parentIds: (array) ($get('target_department_ids') ?? []),
                             ))

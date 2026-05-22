@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::create('task_assignment_targets', function (Blueprint $table) {
             $table->id();
             $table->foreignId('task_id')->constrained('tasks')->cascadeOnDelete();
-            $table->string('target_type', 50); // user, company_category, branch
+            $table->string('target_type', 50); // user, department
             $table->unsignedBigInteger('target_id');
             $table->foreignId('assigned_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamps();

@@ -34,7 +34,7 @@ class WhatsappContactsTable
                     ->label('القسم / الوحدة')
                     ->placeholder('-'),
                 TextColumn::make('default_location')
-                    ->label(__('Branch / Location'))
+                    ->label(__('Location'))
                     ->searchable()
                     ->placeholder('-'),
                 TextColumn::make('messages_count')

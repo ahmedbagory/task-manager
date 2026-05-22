@@ -28,7 +28,7 @@ class WhatsappContactInfolist
                             ->label(__('Default Department'))
                             ->placeholder('-'),
                         TextEntry::make('default_location')
-                            ->label(__('Default Branch / Location'))
+                            ->label(__('Location'))
                             ->placeholder('-'),
                         TextEntry::make('last_message_at')
                             ->dateTime()

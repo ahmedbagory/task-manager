@@ -273,7 +273,7 @@
     "Send push notifications to selected departments or employees who have the mobile app installed.": "أرسل تنبيهات Push إلى الأقسام أو الموظفين المحددين الذين لديهم تطبيق الموبايل مثبت.",
     "Choose one or more departments, units, or employees. Matching employees are deduplicated automatically.": "اختر قسماً رئيسياً أو وحدة أو موظفاً أو أكثر، وسيتم حذف التكرار من الموظفين المستهدفين تلقائياً.",
     "Top-level Departments": "الأقسام الرئيسية",
-    "Specific Units / Branches": "الوحدات / الفروع المحددة",
+    "Specific Units": "الوحدات المحددة",
     "Specific Employees": "موظفون محددون",
     "Audience Preview": "معاينة المستهدفين",
     "No audience selected yet.": "لم يتم اختيار أي مستهدفين بعد.",

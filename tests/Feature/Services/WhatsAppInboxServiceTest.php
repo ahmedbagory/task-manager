@@ -149,7 +149,7 @@ class WhatsAppInboxServiceTest extends TestCase
         ], $employee);
     }
 
-    public function test_convert_message_to_task_uses_contact_branch_mapping_as_defaults(): void
+    public function test_convert_message_to_task_uses_contact_department_mapping_as_defaults(): void
     {
         app(RbacInitializationService::class)->seed();
 
@@ -168,11 +168,11 @@ class WhatsAppInboxServiceTest extends TestCase
             'contact_id' => $contact->id,
             'direction' => 'inbound',
             'from_phone' => '201555960069',
-            'body' => 'Air conditioner issue in branch.',
+            'body' => 'Air conditioner issue in location.',
         ]);
 
         $task = app(WhatsAppInboxService::class)->convertMessageToTask($message, [
-            'title' => 'Branch AC issue',
+            'title' => 'Location AC issue',
             'priority' => 'medium',
         ], $dispatcher);
 
@@ -187,7 +187,7 @@ class WhatsAppInboxServiceTest extends TestCase
         $dispatcher = User::factory()->create();
         $dispatcher->assignRole(Rbac::DISPATCHER);
 
-        $branchContact = WhatsappContact::factory()->create([
+        $mappedContact = WhatsappContact::factory()->create([
             'phone' => '201555960069',
             'default_location' => 'ميجا 6',
         ]);
@@ -203,7 +203,7 @@ class WhatsAppInboxServiceTest extends TestCase
             'contact_id' => $lidContact->id,
             'direction' => 'inbound',
             'from_phone' => '167366503714914',
-            'body' => 'Issue from branch group',
+            'body' => 'Issue from department group',
             'raw_payload' => [
                 'payload' => [
                     'raw_payload' => [
@@ -216,12 +216,12 @@ class WhatsAppInboxServiceTest extends TestCase
         ]);
 
         $task = app(WhatsAppInboxService::class)->convertMessageToTask($message, [
-            'title' => 'Branch issue',
+            'title' => 'Department issue',
             'priority' => 'medium',
         ], $dispatcher);
 
         $this->assertSame('ميجا 6', $task->location);
         $this->assertSame('201555960069', $task->reported_by_phone);
-        $this->assertNotNull($branchContact);
+        $this->assertNotNull($mappedContact);
     }
 }

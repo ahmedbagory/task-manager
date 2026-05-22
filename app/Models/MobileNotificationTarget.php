@@ -40,7 +40,7 @@ class MobileNotificationTarget extends Model
         }
 
         return $this->target?->parent_id
-            ? __('Specific Units / Branches')
+            ? __('Specific Units')
             : __('Top-level Departments');
     }
 }

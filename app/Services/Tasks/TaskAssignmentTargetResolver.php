@@ -22,12 +22,8 @@ class TaskAssignmentTargetResolver
 
         unset(
             $data['assignment_target_departments'],
-            $data['assignment_target_categories'],
             $data['assignment_target_units'],
-            $data['assignment_target_branches'],
             $data['assignment_target_users'],
-            $data['categories'],
-            $data['branches'],
             $data['department_ids'],
             $data['child_department_ids'],
             $data['user_ids'],
@@ -269,16 +265,12 @@ class TaskAssignmentTargetResolver
         return [
             'departments' => $this->normalizeIds(array_merge(
                 (array) ($targets['assignment_target_departments'] ?? []),
-                (array) ($targets['assignment_target_categories'] ?? []),
                 (array) ($targets['departments'] ?? []),
-                (array) ($targets['categories'] ?? []),
                 (array) ($targets['department_ids'] ?? []),
             )),
             'units' => $this->normalizeIds(array_merge(
                 (array) ($targets['assignment_target_units'] ?? []),
-                (array) ($targets['assignment_target_branches'] ?? []),
                 (array) ($targets['units'] ?? []),
-                (array) ($targets['branches'] ?? []),
                 (array) ($targets['child_department_ids'] ?? []),
             )),
             'users' => $this->normalizeIds(array_merge(
@@ -290,20 +282,13 @@ class TaskAssignmentTargetResolver
     }
 
     /**
-     * Map stored assignment target rows to department ids only.
-     * Legacy `company_category` and `branch` target types are treated as department ids when possible.
-     *
      * @param  Collection<int, TaskAssignmentTarget>  $targets
      * @return array<int, int>
      */
     private function extractDepartmentIdsFromStoredTargets(Collection $targets): array
     {
         $candidateDepartmentIds = $targets
-            ->filter(fn (TaskAssignmentTarget $target): bool => in_array($target->target_type, [
-                'department',
-                'company_category',
-                'branch',
-            ], true))
+            ->where('target_type', 'department')
             ->pluck('target_id')
             ->map(fn ($id) => (int) $id)
             ->values()

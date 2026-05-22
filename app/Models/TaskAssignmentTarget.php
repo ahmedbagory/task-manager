@@ -30,8 +30,6 @@ class TaskAssignmentTarget extends Model
         return match ($this->target_type) {
             'user' => $this->target?->name ?? '—',
             'department' => $this->target?->hierarchy_name ?? '—',
-            'company_category' => $this->target?->name_ar ?? '—',
-            'branch' => $this->target?->name_ar ?? '—',
             default => '—',
         };
     }
@@ -41,8 +39,6 @@ class TaskAssignmentTarget extends Model
         return match ($this->target_type) {
             'user' => 'موظف',
             'department' => $this->target?->parent_id ? 'وحدة' : 'قسم رئيسي',
-            'company_category' => 'قطاع',
-            'branch' => 'فرع',
             default => $this->target_type,
         };
     }

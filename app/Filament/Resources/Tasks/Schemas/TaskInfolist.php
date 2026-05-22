@@ -82,8 +82,6 @@ class TaskInfolist
                                     ->color(fn ($record) => match ($record->target_type) {
                                         'user' => 'success',
                                         'department' => $record->target?->parent_id ? 'warning' : 'primary',
-                                        'company_category' => 'primary',
-                                        'branch' => 'warning',
                                         default => 'gray',
                                     }),
                                 TextEntry::make('target_name')
