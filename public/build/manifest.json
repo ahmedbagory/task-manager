@@ -60,8 +60,17 @@
     "src": "resources/css/app.css",
     "isEntry": true
   },
+  "resources/css/filament/admin/theme.css": {
+    "file": "assets/theme-DR3CTG5s.css",
+    "name": "theme",
+    "names": [
+      "theme.css"
+    ],
+    "src": "resources/css/filament/admin/theme.css",
+    "isEntry": true
+  },
   "resources/js/app.js": {
-    "file": "assets/app-34mOoJaZ.js",
+    "file": "assets/app-BLa98ks6.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true

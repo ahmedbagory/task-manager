@@ -60,6 +60,7 @@ class AdminPanelProvider extends PanelProvider
             ->colors([
                 'primary' => Color::Amber,
             ])
+            ->viteTheme('resources/css/filament/admin/theme.css')
             ->sidebarCollapsibleOnDesktop()
             ->collapsedSidebarWidth('5rem')
             ->maxContentWidth(Width::Full)
