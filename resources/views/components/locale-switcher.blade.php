@@ -8,35 +8,41 @@
 @endphp
 
 @if($context === 'panel')
-<div class="px-2 py-1.5">
-    <form method="POST" action="{{ route('locale.switch') }}" class="flex items-center justify-center gap-0.5 rounded-lg bg-gray-950/5 p-0.5 dark:bg-white/5">
+<x-filament::dropdown.list>
+    <form method="POST" action="{{ route('locale.switch') }}" style="width: 100%;">
         @csrf
-        @foreach ($locales as $locale => $label)
-            <button
-                type="submit"
-                name="locale"
-                value="{{ $locale }}"
-                class="flex-1 rounded-md px-3 py-1.5 text-sm font-medium text-center transition {{ $currentLocale === $locale ? 'bg-white text-gray-900 shadow-sm dark:bg-white/10 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200' }}"
-            >
-                {{ $label }}
-            </button>
-        @endforeach
+        <x-filament::button.group style="width: 100%;">
+            @foreach ($locales as $locale => $label)
+                <x-filament::button
+                    type="submit"
+                    name="locale"
+                    value="{{ $locale }}"
+                    size="sm"
+                    :color="$currentLocale === $locale ? 'primary' : 'gray'"
+                >
+                    {{ $label }}
+                </x-filament::button>
+            @endforeach
+        </x-filament::button.group>
     </form>
-</div>
+</x-filament::dropdown.list>
 @elseif($context === 'login')
-<div class="mt-4 flex justify-center">
-    <form method="POST" action="{{ route('locale.switch') }}" class="inline-flex items-center gap-0.5 rounded-lg bg-gray-100 p-0.5 dark:bg-white/5">
+<div style="margin-top: 1rem; display: flex; justify-content: center;">
+    <form method="POST" action="{{ route('locale.switch') }}">
         @csrf
-        @foreach ($locales as $locale => $label)
-            <button
-                type="submit"
-                name="locale"
-                value="{{ $locale }}"
-                class="rounded-md px-3 py-1.5 text-sm font-medium transition {{ $currentLocale === $locale ? 'bg-white text-gray-900 shadow-sm dark:bg-white/10 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200' }}"
-            >
-                {{ $label }}
-            </button>
-        @endforeach
+        <x-filament::button.group>
+            @foreach ($locales as $locale => $label)
+                <x-filament::button
+                    type="submit"
+                    name="locale"
+                    value="{{ $locale }}"
+                    size="sm"
+                    :color="$currentLocale === $locale ? 'primary' : 'gray'"
+                >
+                    {{ $label }}
+                </x-filament::button>
+            @endforeach
+        </x-filament::button.group>
     </form>
 </div>
 @else
