@@ -4,9 +4,10 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Api\Concerns\RespondsWithJson;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\Notifications\DestroyDeviceTokenRequest;
+use App\Http\Requests\Api\Notifications\StoreDeviceTokenRequest;
 use App\Models\DeviceToken;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 
 class DeviceTokenController extends Controller
 {
@@ -15,20 +16,24 @@ class DeviceTokenController extends Controller
     /**
      * Register or update FCM token.
      */
-    public function store(Request $request): JsonResponse
+    public function store(StoreDeviceTokenRequest $request): JsonResponse
     {
-        $request->validate([
-            'fcm_token' => 'required|string|max:500',
-            'device_type' => 'sometimes|string|in:android,ios',
-        ]);
-
         $user = $request->user();
+        $validated = $request->validated();
+
+        DeviceToken::query()
+            ->where('fcm_token', $validated['fcm_token'])
+            ->where('device_id', '!=', $validated['device_id'])
+            ->delete();
 
         DeviceToken::updateOrCreate(
-            ['fcm_token' => $request->input('fcm_token')],
+            ['device_id' => $validated['device_id']],
             [
                 'user_id' => $user->id,
-                'device_type' => $request->input('device_type', 'android'),
+                'fcm_token' => $validated['fcm_token'],
+                'device_type' => $validated['device_type'] ?? 'android',
+                'device_name' => $validated['device_name'] ?? null,
+                'last_used_at' => now(),
             ],
         );
 
@@ -40,15 +45,25 @@ class DeviceTokenController extends Controller
     /**
      * Unregister FCM token (on logout).
      */
-    public function destroy(Request $request): JsonResponse
+    public function destroy(DestroyDeviceTokenRequest $request): JsonResponse
     {
-        $request->validate([
-            'fcm_token' => 'required|string',
-        ]);
+        $validated = $request->validated();
 
-        DeviceToken::where('fcm_token', $request->input('fcm_token'))->delete();
+        $deleted = DeviceToken::query()
+            ->where('user_id', $request->user()->id)
+            ->where(function ($query) use ($validated): void {
+                if (! empty($validated['device_id'])) {
+                    $query->orWhere('device_id', $validated['device_id']);
+                }
+
+                if (! empty($validated['fcm_token'])) {
+                    $query->orWhere('fcm_token', $validated['fcm_token']);
+                }
+            })
+            ->delete();
 
         return $this->successResponse(
+            data: ['deleted' => $deleted],
             message: 'Device token removed.',
         );
     }

@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\DeviceTokenController;
 use App\Http\Controllers\Api\MyTaskController;
+use App\Http\Controllers\Api\NotificationTestController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/login', [AuthController::class, 'login'])->name('api.login');
@@ -37,6 +38,7 @@ Route::prefix('mobile')->name('api.mobile.')->group(function (): void {
         // Device token (FCM)
         Route::post('/device-token', [DeviceTokenController::class, 'store'])->name('device-token.store');
         Route::delete('/device-token', [DeviceTokenController::class, 'destroy'])->name('device-token.destroy');
+        Route::post('/notifications/test', [NotificationTestController::class, 'store'])->name('notifications.test');
 
         Route::prefix('my-tasks')->name('my-tasks.')->group(function (): void {
             Route::get('/', [MyTaskController::class, 'index'])->name('index');

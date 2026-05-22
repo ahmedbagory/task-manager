@@ -5,15 +5,18 @@ namespace Tests\Feature\Api;
 use App\Enums\TaskAssignmentStatus;
 use App\Enums\TaskSource;
 use App\Enums\TaskStatus;
+use App\Models\DeviceToken;
 use App\Models\Task;
 use App\Models\User;
 use App\Services\Authorization\RbacInitializationService;
+use App\Services\Notifications\FcmNotificationService;
 use App\Services\Tasks\TaskAssignmentService;
 use App\Support\Rbac;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
+use Mockery\MockInterface;
 use Tests\TestCase;
 
 class MobileTaskApiTest extends TestCase
@@ -61,6 +64,116 @@ class MobileTaskApiTest extends TestCase
             ->assertJsonPath('success', false)
             ->assertJsonPath('message', 'Unauthenticated.')
             ->assertJsonPath('errors.auth.0', 'Authentication is required.');
+    }
+
+    public function test_authenticated_user_can_register_refresh_and_remove_a_device_token(): void
+    {
+        app(RbacInitializationService::class)->seed();
+
+        $employee = User::factory()->create();
+        $employee->assignRole(Rbac::EMPLOYEE);
+
+        Sanctum::actingAs($employee);
+
+        $this->postJson('/api/mobile/device-token', [
+            'device_id' => 'device-123',
+            'device_name' => 'Pixel 8',
+            'device_type' => 'android',
+            'fcm_token' => 'token-one',
+        ])->assertOk();
+
+        $this->assertDatabaseHas('device_tokens', [
+            'user_id' => $employee->id,
+            'device_id' => 'device-123',
+            'fcm_token' => 'token-one',
+            'device_name' => 'Pixel 8',
+        ]);
+
+        $this->postJson('/api/mobile/device-token', [
+            'device_id' => 'device-123',
+            'device_name' => 'Pixel 8',
+            'device_type' => 'android',
+            'fcm_token' => 'token-two',
+        ])->assertOk();
+
+        $this->assertDatabaseMissing('device_tokens', [
+            'device_id' => 'device-123',
+            'fcm_token' => 'token-one',
+        ]);
+        $this->assertDatabaseHas('device_tokens', [
+            'device_id' => 'device-123',
+            'fcm_token' => 'token-two',
+        ]);
+        $this->assertSame(1, DeviceToken::query()->count());
+
+        $this->deleteJson('/api/mobile/device-token', [
+            'device_id' => 'device-123',
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.deleted', 1);
+
+        $this->assertDatabaseCount('device_tokens', 0);
+    }
+
+    public function test_admin_can_send_test_notification_to_selected_mobile_device(): void
+    {
+        app(RbacInitializationService::class)->seed();
+
+        $admin = User::factory()->create();
+        $admin->assignRole(Rbac::ADMIN);
+
+        $employee = User::factory()->create();
+        $employee->assignRole(Rbac::EMPLOYEE);
+
+        DeviceToken::query()->create([
+            'user_id' => $employee->id,
+            'device_id' => 'device-abc',
+            'fcm_token' => 'fcm-token-abc',
+            'device_type' => 'android',
+        ]);
+
+        $this->mock(FcmNotificationService::class, function (MockInterface $mock) use ($employee): void {
+            $mock->shouldReceive('sendTestNotification')
+                ->once()
+                ->withArgs(function (User $recipient, string $title, string $body, array $data, ?string $deviceId) use ($employee): bool {
+                    return $recipient->is($employee)
+                        && $title === 'Ping'
+                        && $body === 'Mobile push test'
+                        && $data['type'] === 'test_notification'
+                        && $deviceId === 'device-abc';
+                })
+                ->andReturn(1);
+        });
+
+        Sanctum::actingAs($admin);
+
+        $this->postJson('/api/mobile/notifications/test', [
+            'user_id' => $employee->id,
+            'device_id' => 'device-abc',
+            'title' => 'Ping',
+            'body' => 'Mobile push test',
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.sent', 1);
+    }
+
+    public function test_employee_cannot_send_test_notification_without_permission(): void
+    {
+        app(RbacInitializationService::class)->seed();
+
+        $employee = User::factory()->create();
+        $employee->assignRole(Rbac::EMPLOYEE);
+
+        Sanctum::actingAs($employee);
+
+        $this->postJson('/api/mobile/notifications/test', [
+            'user_id' => $employee->id,
+            'title' => 'Ping',
+            'body' => 'Mobile push test',
+        ])
+            ->assertForbidden()
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'Forbidden.');
     }
 
     public function test_employee_can_only_list_and_view_own_assigned_tasks(): void

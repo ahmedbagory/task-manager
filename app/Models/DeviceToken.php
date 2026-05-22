@@ -9,9 +9,19 @@ class DeviceToken extends Model
 {
     protected $fillable = [
         'user_id',
+        'device_id',
         'fcm_token',
         'device_type',
+        'device_name',
+        'last_used_at',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'last_used_at' => 'datetime',
+        ];
+    }
 
     public function user(): BelongsTo
     {

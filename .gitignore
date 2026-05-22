@@ -10,6 +10,8 @@ storage/logs/*.log
 storage/framework/cache/*
 storage/framework/sessions/*
 storage/framework/views/*
+storage/app/firebase/*.json
+!storage/app/firebase/.gitignore
 
 public/storage
 /public/build/hot

@@ -5,7 +5,6 @@ namespace App\Services\Notifications;
 use App\Models\DeviceToken;
 use App\Models\Task;
 use App\Models\User;
-use Google\Auth\Credentials\ServiceAccountCredentials;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -26,7 +25,7 @@ class FcmNotificationService
      */
     public function notifyNewTaskAssigned(Task $task, User $assignee): void
     {
-        $tokens = DeviceToken::where('user_id', $assignee->id)->pluck('fcm_token')->toArray();
+        $tokens = $this->tokensForUser($assignee);
 
         if (empty($tokens)) {
             return;
@@ -35,13 +34,11 @@ class FcmNotificationService
         $title = 'New Task Assigned';
         $body = "Task \"{$task->title}\" has been assigned to you.";
 
-        foreach ($tokens as $token) {
-            $this->sendPush($token, $title, $body, [
-                'type' => 'new_task',
-                'task_id' => (string) $task->id,
-                'task_title' => $task->title,
-            ]);
-        }
+        $this->sendTokens($tokens, $title, $body, [
+            'type' => 'new_task',
+            'task_id' => (string) $task->id,
+            'task_title' => $task->title,
+        ]);
     }
 
     /**
@@ -49,7 +46,7 @@ class FcmNotificationService
      */
     public function notifyTaskStatusChanged(Task $task, User $recipient, string $action): void
     {
-        $tokens = DeviceToken::where('user_id', $recipient->id)->pluck('fcm_token')->toArray();
+        $tokens = $this->tokensForUser($recipient);
 
         if (empty($tokens)) {
             return;
@@ -66,13 +63,32 @@ class FcmNotificationService
         $title = 'Task ' . ucfirst($label);
         $body = "Task \"{$task->title}\" has been {$label}.";
 
-        foreach ($tokens as $token) {
-            $this->sendPush($token, $title, $body, [
-                'type' => 'task_update',
-                'task_id' => (string) $task->id,
-                'action' => $action,
-            ]);
+        $this->sendTokens($tokens, $title, $body, [
+            'type' => 'task_update',
+            'task_id' => (string) $task->id,
+            'action' => $action,
+        ]);
+    }
+
+    /**
+     * Send a protected test notification to the selected user's device(s).
+     */
+    public function sendTestNotification(
+        User $recipient,
+        string $title,
+        string $body,
+        array $data = [],
+        ?string $deviceId = null,
+    ): int {
+        $tokens = $this->tokensForUser($recipient, $deviceId);
+
+        if (empty($tokens)) {
+            return 0;
         }
+
+        $this->sendTokens($tokens, $title, $body, $data);
+
+        return count($tokens);
     }
 
     /**
@@ -80,14 +96,16 @@ class FcmNotificationService
      */
     private function sendPush(string $token, string $title, string $body, array $data = []): void
     {
-        if (! $this->credentialsPath || ! $this->projectId) {
+        $credentialsFile = $this->resolveCredentialsFile();
+
+        if (! $credentialsFile || ! $this->projectId) {
             Log::warning('[FCM] Firebase credentials or project ID not configured.');
 
             return;
         }
 
         try {
-            $accessToken = $this->getAccessToken();
+            $accessToken = $this->getAccessToken($credentialsFile);
 
             $response = Http::withToken($accessToken)
                 ->post("https://fcm.googleapis.com/v1/projects/{$this->projectId}/messages:send", [
@@ -97,7 +115,11 @@ class FcmNotificationService
                             'title' => $title,
                             'body' => $body,
                         ],
-                        'data' => $data,
+                        'data' => $this->stringifyData([
+                            'title' => $title,
+                            'body' => $body,
+                            ...$data,
+                        ]),
                         'android' => [
                             'priority' => 'high',
                             'notification' => [
@@ -116,7 +138,7 @@ class FcmNotificationService
                 ]);
 
                 // Remove invalid tokens
-                if ($response->status() === 404 || str_contains($response->body(), 'UNREGISTERED')) {
+                if ($this->shouldForgetToken($response->status(), $response->body())) {
                     DeviceToken::where('fcm_token', $token)->delete();
                     Log::info('[FCM] Removed stale token');
                 }
@@ -129,17 +151,144 @@ class FcmNotificationService
     /**
      * Get OAuth2 access token from service account credentials.
      */
-    private function getAccessToken(): string
+    private function getAccessToken(string $credentialsFile): string
     {
-        $credentialsFile = base_path($this->credentialsPath);
+        $credentials = json_decode(file_get_contents($credentialsFile), true, 512, JSON_THROW_ON_ERROR);
 
-        $credentials = new ServiceAccountCredentials(
-            'https://www.googleapis.com/auth/firebase.messaging',
-            json_decode(file_get_contents($credentialsFile), true),
+        $clientEmail = $credentials['client_email'] ?? null;
+        $privateKey = $credentials['private_key'] ?? null;
+
+        if (! is_string($clientEmail) || ! is_string($privateKey) || $clientEmail === '' || $privateKey === '') {
+            throw new \RuntimeException('Firebase service account credentials are incomplete.');
+        }
+
+        $issuedAt = now()->timestamp;
+        $assertion = $this->buildServiceAccountAssertion(
+            clientEmail: $clientEmail,
+            privateKey: $privateKey,
+            issuedAt: $issuedAt,
+            expiresAt: $issuedAt + 3600,
         );
 
-        $token = $credentials->fetchAuthToken();
+        $response = Http::asForm()
+            ->post('https://oauth2.googleapis.com/token', [
+                'grant_type' => 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+                'assertion' => $assertion,
+            ])
+            ->throw()
+            ->json();
 
-        return $token['access_token'];
+        $accessToken = $response['access_token'] ?? null;
+
+        if (! is_string($accessToken) || trim($accessToken) === '') {
+            throw new \RuntimeException('Firebase OAuth token response did not include an access token.');
+        }
+
+        return $accessToken;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function tokensForUser(User $user, ?string $deviceId = null): array
+    {
+        $query = DeviceToken::query()->where('user_id', $user->id);
+
+        if ($deviceId !== null) {
+            $query->where('device_id', $deviceId);
+        }
+
+        return $query
+            ->pluck('fcm_token')
+            ->filter(fn ($token): bool => filled($token))
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  array<int, string>  $tokens
+     */
+    private function sendTokens(array $tokens, string $title, string $body, array $data = []): void
+    {
+        foreach ($tokens as $token) {
+            $this->sendPush($token, $title, $body, $data);
+        }
+    }
+
+    private function resolveCredentialsFile(): ?string
+    {
+        if (! filled($this->credentialsPath)) {
+            return null;
+        }
+
+        if (is_file((string) $this->credentialsPath)) {
+            return (string) $this->credentialsPath;
+        }
+
+        $relativePath = base_path((string) $this->credentialsPath);
+
+        return is_file($relativePath) ? $relativePath : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, string>
+     */
+    private function stringifyData(array $data): array
+    {
+        $payload = [];
+
+        foreach ($data as $key => $value) {
+            if (is_scalar($value) || $value instanceof \Stringable) {
+                $stringValue = trim((string) $value);
+
+                if ($stringValue !== '') {
+                    $payload[(string) $key] = $stringValue;
+                }
+            }
+        }
+
+        return $payload;
+    }
+
+    private function shouldForgetToken(int $status, string $body): bool
+    {
+        return $status === 404
+            || str_contains($body, 'UNREGISTERED')
+            || str_contains($body, 'registration-token-not-registered');
+    }
+
+    private function buildServiceAccountAssertion(
+        string $clientEmail,
+        string $privateKey,
+        int $issuedAt,
+        int $expiresAt,
+    ): string {
+        $header = $this->base64UrlEncode(json_encode([
+            'alg' => 'RS256',
+            'typ' => 'JWT',
+        ], JSON_THROW_ON_ERROR));
+
+        $claims = $this->base64UrlEncode(json_encode([
+            'iss' => $clientEmail,
+            'scope' => 'https://www.googleapis.com/auth/firebase.messaging',
+            'aud' => 'https://oauth2.googleapis.com/token',
+            'iat' => $issuedAt,
+            'exp' => $expiresAt,
+        ], JSON_THROW_ON_ERROR));
+
+        $unsignedToken = "{$header}.{$claims}";
+        $signature = '';
+
+        if (! openssl_sign($unsignedToken, $signature, $privateKey, OPENSSL_ALGO_SHA256)) {
+            throw new \RuntimeException('Unable to sign Firebase service account assertion.');
+        }
+
+        return "{$unsignedToken}.{$this->base64UrlEncode($signature)}";
+    }
+
+    private function base64UrlEncode(string $value): string
+    {
+        return rtrim(strtr(base64_encode($value), '+/', '-_'), '=');
     }
 }
