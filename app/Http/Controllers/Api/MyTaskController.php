@@ -42,7 +42,14 @@ class MyTaskController extends Controller
 
         $tasksQuery = Task::query()
             ->where('assigned_to_user_id', $user->id)
-            ->with(['department.parent', 'category'])
+            ->with([
+                'department.parent',
+                'category',
+                'latestAssignment.assignedByUser',
+                'reportedByUser',
+                'createdByUser',
+            ])
+            ->withCount('comments')
             ->orderByDesc('updated_at');
 
         if (! empty($validated['status'])) {
@@ -329,6 +336,9 @@ class MyTaskController extends Controller
             'department.parent',
             'category',
             'assignedToUser',
+            'latestAssignment.assignedByUser',
+            'reportedByUser',
+            'createdByUser',
             'assignments.assignedByUser',
             'assignments.assignedToUser',
             'comments.user',
@@ -354,6 +364,9 @@ class MyTaskController extends Controller
                 'department.parent',
                 'category',
                 'assignedToUser',
+                'latestAssignment.assignedByUser',
+                'reportedByUser',
+                'createdByUser',
                 'assignments.assignedByUser',
                 'assignments.assignedToUser',
                 'comments.user',

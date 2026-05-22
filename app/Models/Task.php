@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 #[Fillable([
@@ -82,6 +83,11 @@ class Task extends Model
     public function assignments(): HasMany
     {
         return $this->hasMany(TaskAssignment::class);
+    }
+
+    public function latestAssignment(): HasOne
+    {
+        return $this->hasOne(TaskAssignment::class)->latestOfMany();
     }
 
     public function comments(): HasMany

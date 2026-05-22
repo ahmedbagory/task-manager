@@ -24,6 +24,14 @@ class TaskListResource extends JsonResource
             ? $this->status
             : TaskStatus::tryFrom((string) $this->status);
 
+        $requestedBy = $this->latestAssignment?->assignedByUser
+            ?? $this->reportedByUser
+            ?? $this->createdByUser;
+
+        $commentsCount = $this->relationLoaded('comments')
+            ? $this->comments->count()
+            : (int) ($this->comments_count ?? 0);
+
         return [
             'id' => $this->id,
             'task_number' => $this->task_number,
@@ -57,6 +65,10 @@ class TaskListResource extends JsonResource
             'completed_at' => $this->completed_at?->toIso8601String(),
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
+            'requested_by' => $requestedBy
+                ? (new UserResource($requestedBy))->resolve()
+                : null,
+            'comments_count' => $commentsCount,
         ];
     }
 }
