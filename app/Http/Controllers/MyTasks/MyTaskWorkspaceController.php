@@ -178,7 +178,9 @@ class MyTaskWorkspaceController extends Controller
             return $this->redirectBackWithValidationError($exception);
         }
 
-        return back()->with('status', __('Task rejected successfully.'));
+        return redirect()
+            ->route('my-tasks.index')
+            ->with('status', __('Task rejected successfully.'));
     }
 
     public function storeComment(StoreTaskCommentRequest $request, Task $task): RedirectResponse
@@ -249,7 +251,7 @@ class MyTaskWorkspaceController extends Controller
             200,
             [
                 'Content-Type' => $attachment->mime_type ?: 'application/octet-stream',
-                'Content-Disposition' => 'inline; filename="' . ($attachment->original_name ?: basename($attachment->path)) . '"',
+                'Content-Disposition' => 'inline; filename="'.($attachment->original_name ?: basename($attachment->path)).'"',
                 'Cache-Control' => 'private, max-age=3600',
             ]
         );
@@ -270,13 +272,9 @@ class MyTaskWorkspaceController extends Controller
         /** @var User $user */
         $user = $request->user();
 
-        if ($user->hasRole(\App\Support\Rbac::SUPER_ADMIN)) {
-            return true;
-        }
-
         $task = $attachment->task;
 
-        return $task && $task->assigned_to_user_id === $user->id;
+        return $task && $user->can('viewAttachments', $task);
     }
 
     private function resolveUserAssignment(Task $task, User $user): TaskAssignment
