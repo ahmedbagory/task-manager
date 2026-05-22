@@ -16,3 +16,6 @@ public/storage
 
 .DS_Store
 Thumbs.db
+
+.phpunit.result.cache
+whatsapp-bridge/bridge.log
