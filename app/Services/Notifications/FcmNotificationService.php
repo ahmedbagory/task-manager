@@ -6,6 +6,7 @@ use App\Models\DeviceToken;
 use App\Models\Task;
 use App\Models\User;
 use App\Support\Rbac;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -61,7 +62,7 @@ class FcmNotificationService
         ];
 
         $label = $actionLabels[$action] ?? $action;
-        $title = 'Task ' . ucfirst($label);
+        $title = 'Task '.ucfirst($label);
         $body = "Task \"{$task->title}\" has been {$label}.";
 
         $this->sendTokens($tokens, $title, $body, [
@@ -86,7 +87,7 @@ class FcmNotificationService
         $label = $actionLabels[$action] ?? $action;
         $actorName = $actor?->name ?? __('Unknown');
 
-        $title = __('Task') . " {$task->task_number} {$label}";
+        $title = __('Task')." {$task->task_number} {$label}";
         $body = "{$actorName} {$label} \"{$task->title}\"";
 
         $data = [
@@ -132,6 +133,45 @@ class FcmNotificationService
     }
 
     /**
+     * @param  iterable<int, User>  $recipients
+     * @return array{targeted_users: int, targeted_users_with_devices: int, targeted_devices: int}
+     */
+    public function sendManualNotification(
+        iterable $recipients,
+        string $title,
+        string $body,
+        array $data = [],
+    ): array {
+        /** @var Collection<int, User> $users */
+        $users = collect($recipients)
+            ->filter(fn ($recipient): bool => $recipient instanceof User)
+            ->unique(fn (User $recipient): int => $recipient->id)
+            ->values();
+
+        $targetedUsersWithDevices = 0;
+        $targetedDevices = 0;
+
+        foreach ($users as $recipient) {
+            $tokens = $this->tokensForUser($recipient);
+
+            if ($tokens === []) {
+                continue;
+            }
+
+            $targetedUsersWithDevices++;
+            $targetedDevices += count($tokens);
+
+            $this->sendTokens($tokens, $title, $body, $data);
+        }
+
+        return [
+            'targeted_users' => $users->count(),
+            'targeted_users_with_devices' => $targetedUsersWithDevices,
+            'targeted_devices' => $targetedDevices,
+        ];
+    }
+
+    /**
      * Send a push notification via FCM HTTP v1 API.
      */
     private function sendPush(string $token, string $title, string $body, array $data = []): void
@@ -173,7 +213,7 @@ class FcmNotificationService
             if ($response->failed()) {
                 $error = $response->json();
                 Log::error('[FCM] Failed to send push', [
-                    'token' => substr($token, 0, 20) . '...',
+                    'token' => substr($token, 0, 20).'...',
                     'error' => $error,
                 ]);
 
@@ -184,7 +224,7 @@ class FcmNotificationService
                 }
             }
         } catch (\Throwable $e) {
-            Log::error('[FCM] Exception sending push: ' . $e->getMessage());
+            Log::error('[FCM] Exception sending push: '.$e->getMessage());
         }
     }
 

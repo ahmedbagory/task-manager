@@ -48,6 +48,7 @@ final class Rbac
         'roles.manage',
         'reports.view',
         'settings.api.manage',
+        'mobile_notifications.send',
     ];
 
     public const ROLE_PERMISSIONS = [
@@ -70,6 +71,7 @@ final class Rbac
             'whatsapp_contacts.view',
             'whatsapp_contacts.manage',
             'reports.view',
+            'mobile_notifications.send',
         ],
         self::SUPERVISOR => [
             'dashboard.view',

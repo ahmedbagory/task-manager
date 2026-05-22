@@ -159,6 +159,10 @@ class TaskAssignmentTargetResolver
             $resolvedIds = array_merge(
                 $resolvedIds,
                 User::query()
+                    ->whereHas('roles', fn (Builder $query) => $query->whereIn('name', [
+                        Rbac::EMPLOYEE,
+                        Rbac::SUPERVISOR,
+                    ]))
                     ->whereIn('id', $directUserIds)
                     ->pluck('id')
                     ->map(fn ($id) => (int) $id)
