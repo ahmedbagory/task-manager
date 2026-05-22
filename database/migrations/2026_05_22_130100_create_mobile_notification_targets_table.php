@@ -15,9 +15,9 @@ return new class extends Migration
             $table->unsignedBigInteger('target_id');
             $table->timestamps();
 
-            $table->index(['mobile_notification_id', 'target_type']);
-            $table->index(['target_type', 'target_id']);
-            $table->unique(['mobile_notification_id', 'target_type', 'target_id']);
+            $table->index(['mobile_notification_id', 'target_type'], 'mnt_notif_type_idx');
+            $table->index(['target_type', 'target_id'], 'mnt_type_id_idx');
+            $table->unique(['mobile_notification_id', 'target_type', 'target_id'], 'mnt_notif_type_target_unq');
         });
     }
 

@@ -19,8 +19,8 @@ return new class extends Migration
             $table->timestamp('sent_at')->nullable();
             $table->timestamps();
 
-            $table->unique(['mobile_notification_id', 'user_id']);
-            $table->index(['mobile_notification_id', 'status']);
+            $table->unique(['mobile_notification_id', 'user_id'], 'mnr_notif_user_unq');
+            $table->index(['mobile_notification_id', 'status'], 'mnr_notif_status_idx');
         });
     }
 
