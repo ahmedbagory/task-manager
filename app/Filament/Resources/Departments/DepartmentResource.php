@@ -59,17 +59,17 @@ class DepartmentResource extends Resource
 
     public static function getModelLabel(): string
     {
-        return __('Department');
+        return 'القسم';
     }
 
     public static function getPluralModelLabel(): string
     {
-        return __('Departments');
+        return 'الأقسام والوحدات';
     }
 
     public static function getNavigationLabel(): string
     {
-        return __('Departments');
+        return 'الأقسام والوحدات';
     }
 
     public static function getNavigationGroup(): string|UnitEnum|null

@@ -5,6 +5,9 @@ namespace App\Filament\Resources\Tasks\Schemas;
 use App\Enums\TaskPriority;
 use App\Enums\TaskSource;
 use App\Enums\TaskStatus;
+use App\Models\Department;
+use App\Models\User;
+use App\Services\Departments\DepartmentHierarchyService;
 use App\Support\Rbac;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Select;
@@ -55,12 +58,8 @@ class TaskForm
                 Section::make(__('Classification'))
                     ->components([
                         Select::make('department_id')
-                            ->label(__('Department'))
-                            ->relationship(
-                                name: 'department',
-                                titleAttribute: 'name',
-                                modifyQueryUsing: fn (Builder $query) => $query->where('is_active', true),
-                            )
+                            ->label('القسم / الوحدة')
+                            ->options(fn (): array => app(DepartmentHierarchyService::class)->hierarchyOptions())
                             ->searchable()
                             ->preload()
                             ->live()
@@ -76,8 +75,16 @@ class TaskForm
                                     $departmentId = $get('department_id');
 
                                     if (filled($departmentId)) {
+                                        $parentId = Department::query()
+                                            ->whereKey((int) $departmentId)
+                                            ->value('parent_id');
+
                                         $query->where(fn (Builder $subQuery) => $subQuery
                                             ->where('department_id', $departmentId)
+                                            ->when(
+                                                filled($parentId),
+                                                fn (Builder $builder) => $builder->orWhere('department_id', $parentId),
+                                            )
                                             ->orWhereNull('department_id'));
                                     }
                                 },
@@ -89,6 +96,47 @@ class TaskForm
                             ->maxLength(255),
                     ])
                     ->columns(3),
+                Section::make('التوجيه الإداري')
+                    ->components([
+                        Select::make('assignment_target_departments')
+                            ->label('الأقسام الرئيسية')
+                            ->options(fn (): array => app(DepartmentHierarchyService::class)->topLevelOptions())
+                            ->multiple()
+                            ->searchable()
+                            ->preload()
+                            ->live()
+                            ->afterStateUpdated(fn (Set $set) => $set('assignment_target_units', null))
+                            ->columnSpan(1),
+                        Select::make('assignment_target_units')
+                            ->label('الوحدات / الفروع')
+                            ->options(fn (Get $get): array => app(DepartmentHierarchyService::class)->childOptionsGroupedByParent(
+                                parentIds: (array) ($get('assignment_target_departments') ?? []),
+                            ))
+                            ->multiple()
+                            ->searchable()
+                            ->preload()
+                            ->columnSpan(1),
+                        Select::make('assignment_target_users')
+                            ->label(__('موظفين محددين'))
+                            ->options(fn () => User::query()
+                                ->whereHas('roles', fn (Builder $q) => $q->whereIn('name', [
+                                    Rbac::EMPLOYEE,
+                                    Rbac::SUPERVISOR,
+                                ]))
+                                ->with('department.parent')
+                                ->orderBy('name')
+                                ->get()
+                                ->mapWithKeys(fn ($u) => [
+                                    $u->id => $u->name . ($u->department ? ' (' . $u->department->hierarchy_name . ')' : ''),
+                                ])
+                                ->all())
+                            ->multiple()
+                            ->searchable()
+                            ->preload()
+                            ->columnSpan(1),
+                    ])
+                    ->columns(3)
+                    ->description('اختر أقساماً رئيسية أو وحدات محددة أو موظفين مباشرين. الموظفون المؤهلون يتم احتسابهم من الوحدات المرتبطة وليس من داخل القالب.'),
                 Section::make(__('Reporter & Timing'))
                     ->components([
                         Select::make('reported_by_user_id')

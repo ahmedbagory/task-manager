@@ -2,13 +2,13 @@
 
 namespace App\Filament\Resources\TaskCategories\Schemas;
 
+use App\Services\Departments\DepartmentHierarchyService;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
-use Illuminate\Database\Eloquent\Builder;
 
 class TaskCategoryForm
 {
@@ -19,12 +19,8 @@ class TaskCategoryForm
                 Section::make(__('Category Details'))
                     ->components([
                         Select::make('department_id')
-                            ->label(__('Department'))
-                            ->relationship(
-                                name: 'department',
-                                titleAttribute: 'name',
-                                modifyQueryUsing: fn (Builder $query) => $query->where('is_active', true),
-                            )
+                            ->label('القسم / الوحدة')
+                            ->options(fn (): array => app(DepartmentHierarchyService::class)->hierarchyOptions())
                             ->searchable()
                             ->preload(),
                         TextInput::make('name')

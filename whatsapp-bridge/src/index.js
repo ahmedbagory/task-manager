@@ -618,19 +618,31 @@ async function connect() {
       stopOutboundLoop();
 
       const reasonCode = closeReasonCode(lastDisconnect);
-      const shouldReconnect = reasonCode !== DisconnectReason.loggedOut;
 
-      logger.warn({
-        reason_code: reasonCode,
-        reconnect: shouldReconnect,
-      }, 'Bridge disconnected');
+      // connectionReplaced (440) — another device linked, do NOT reconnect
+      const isReplaced = reasonCode === 440
+        || reasonCode === DisconnectReason.connectionReplaced;
+      const isLoggedOut = reasonCode === DisconnectReason.loggedOut;
+      const shouldReconnect = !isReplaced && !isLoggedOut;
+
+      if (isReplaced) {
+        logger.error({
+          reason_code: reasonCode,
+        }, 'WhatsApp session was replaced from another device. Re-link is required. Bridge will NOT auto-reconnect.');
+      } else {
+        logger.warn({
+          reason_code: reasonCode,
+          reconnect: shouldReconnect,
+        }, 'Bridge disconnected');
+      }
 
       if (shouldReconnect) {
+        const delay = Math.min(5000 + Math.random() * 3000, 10000);
         setTimeout(() => {
           connect().catch((error) => {
             logger.error({ error: error.message }, 'Reconnect failed');
           });
-        }, 2000);
+        }, delay);
       }
     }
   });
@@ -646,15 +658,26 @@ async function connect() {
   });
 }
 
+process.on('unhandledRejection', (reason) => {
+  logger.error({ error: String(reason) }, 'Unhandled promise rejection (non-fatal)');
+});
+
+process.on('uncaughtException', (error) => {
+  logger.fatal({ error: error.message, stack: error.stack }, 'Uncaught exception — process will exit');
+  stopHeartbeatLoop();
+  stopOutboundLoop();
+  process.exit(1);
+});
+
 process.on('SIGINT', () => {
-  logger.info('Bridge shutting down');
+  logger.info('Bridge shutting down (SIGINT)');
   stopHeartbeatLoop();
   stopOutboundLoop();
   process.exit(0);
 });
 
 process.on('SIGTERM', () => {
-  logger.info('Bridge shutting down');
+  logger.info('Bridge shutting down (SIGTERM)');
   stopHeartbeatLoop();
   stopOutboundLoop();
   process.exit(0);

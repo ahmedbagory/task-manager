@@ -13,37 +13,43 @@ class TaskCategorySeeder extends Seeder
      */
     public function run(): void
     {
+        $departmentCodeMap = [
+            'MNT' => '04-OPS-MNT',
+            'IT' => '01-ADMIN-HQ',
+            'SEC' => '04-OPERATIONS',
+        ];
+
         $categories = [
             [
-                'department_code' => 'MNT',
+                'department_code' => $departmentCodeMap['MNT'],
                 'name' => 'Electrical Issue',
                 'code' => 'MNT-ELEC',
                 'description' => 'Electrical faults, power outages, and wiring issues.',
                 'is_active' => true,
             ],
             [
-                'department_code' => 'MNT',
+                'department_code' => $departmentCodeMap['MNT'],
                 'name' => 'Plumbing Issue',
                 'code' => 'MNT-PLMB',
                 'description' => 'Leaks, blocked drains, and water pressure problems.',
                 'is_active' => true,
             ],
             [
-                'department_code' => 'IT',
+                'department_code' => $departmentCodeMap['IT'],
                 'name' => 'Hardware Support',
                 'code' => 'IT-HW',
                 'description' => 'Computers, printers, and device failures.',
                 'is_active' => true,
             ],
             [
-                'department_code' => 'IT',
+                'department_code' => $departmentCodeMap['IT'],
                 'name' => 'Software Support',
                 'code' => 'IT-SW',
                 'description' => 'Application errors, access issues, and software installation.',
                 'is_active' => true,
             ],
             [
-                'department_code' => 'SEC',
+                'department_code' => $departmentCodeMap['SEC'],
                 'name' => 'Incident Report',
                 'code' => 'SEC-INC',
                 'description' => 'Security incidents and suspicious activity reports.',

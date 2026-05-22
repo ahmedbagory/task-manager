@@ -20,8 +20,8 @@ class TaskCategoryInfolist
                         TextEntry::make('code')
                             ->label(__('Code'))
                             ->placeholder('-'),
-                        TextEntry::make('department.name')
-                            ->label(__('Department'))
+                        TextEntry::make('department.hierarchy_name')
+                            ->label('القسم / الوحدة')
                             ->placeholder('-'),
                         IconEntry::make('is_active')
                             ->label(__('Active'))

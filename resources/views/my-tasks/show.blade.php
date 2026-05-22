@@ -50,7 +50,7 @@
         <dl class="mt-4 grid gap-3 text-sm text-slate-700 sm:grid-cols-2 lg:grid-cols-4">
             <div>
                 <dt class="font-semibold text-slate-500">{{ __('Department') }}</dt>
-                <dd>{{ $task->department?->name ?? '-' }}</dd>
+                <dd>{{ $task->department?->hierarchy_name ?? '-' }}</dd>
             </div>
             <div>
                 <dt class="font-semibold text-slate-500">{{ __('Category') }}</dt>

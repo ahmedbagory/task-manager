@@ -42,7 +42,7 @@ class MyTaskController extends Controller
 
         $tasksQuery = Task::query()
             ->where('assigned_to_user_id', $user->id)
-            ->with(['department', 'category'])
+            ->with(['department.parent', 'category'])
             ->orderByDesc('updated_at');
 
         if (! empty($validated['status'])) {
@@ -294,7 +294,7 @@ class MyTaskController extends Controller
     ): JsonResponse {
         /** @var User $user */
         $user = $request->user();
-        $task = $this->resolveAssignedTask($user, $taskId, ['department', 'category']);
+        $task = $this->resolveAssignedTask($user, $taskId, ['department.parent', 'category']);
 
         if (! $task) {
             return $this->errorResponse(message: 'Task not found.', status: 404);
@@ -326,6 +326,7 @@ class MyTaskController extends Controller
 
         $task->refresh()->load([
             'department',
+            'department.parent',
             'category',
             'assignedToUser',
             'assignments.assignedByUser',
@@ -350,6 +351,7 @@ class MyTaskController extends Controller
             ->where('assigned_to_user_id', $user->id)
             ->with(array_merge([
                 'department',
+                'department.parent',
                 'category',
                 'assignedToUser',
                 'assignments.assignedByUser',

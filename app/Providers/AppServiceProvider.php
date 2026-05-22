@@ -8,6 +8,7 @@ use App\Models\TaskCategory;
 use App\Models\User;
 use App\Models\WhatsappContact;
 use App\Models\WhatsappMessage;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use App\Policies\DepartmentPolicy;
 use App\Policies\RolePolicy;
 use App\Policies\TaskCategoryPolicy;
@@ -35,7 +36,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        Gate::policy(Department::class, DepartmentPolicy::class);
+        Relation::enforceMorphMap([
+            'user' => User::class,
+            'department' => Department::class,        ]);        Gate::policy(Department::class, DepartmentPolicy::class);
         Gate::policy(TaskCategory::class, TaskCategoryPolicy::class);
         Gate::policy(Task::class, TaskPolicy::class);
         Gate::policy(User::class, UserPolicy::class);
@@ -48,3 +51,4 @@ class AppServiceProvider extends ServiceProvider
         });
     }
 }
+

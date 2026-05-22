@@ -2,7 +2,7 @@
 
 namespace App\Filament\Resources\WhatsappContacts\Schemas;
 
-use App\Models\Department;
+use App\Services\Departments\DepartmentHierarchyService;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Components\Section;
@@ -15,7 +15,7 @@ class WhatsappContactForm
         return $schema
             ->components([
                 Section::make(__('Contact Routing'))
-                    ->description(__('Map phone numbers to default branch/location used while converting inbox messages to tasks.'))
+                    ->description('اربط أرقام الهواتف بالقسم أو الوحدة الافتراضية والموقع الافتراضي عند تحويل الرسائل إلى مهام.')
                     ->components([
                         TextInput::make('phone')
                             ->label(__('Phone Number'))
@@ -27,16 +27,12 @@ class WhatsappContactForm
                             ->label(__('Contact Name'))
                             ->maxLength(255),
                         Select::make('department_id')
-                            ->label(__('Default Department (Optional)'))
-                            ->options(fn (): array => Department::query()
-                                ->where('is_active', true)
-                                ->orderBy('name')
-                                ->pluck('name', 'id')
-                                ->all())
+                            ->label('القسم / الوحدة الافتراضية')
+                            ->options(fn (): array => app(DepartmentHierarchyService::class)->hierarchyOptions())
                             ->searchable()
                             ->preload(),
                         TextInput::make('default_location')
-                            ->label(__('Default Branch / Location'))
+                            ->label('الموقع الافتراضي')
                             ->maxLength(255)
                             ->placeholder(__('Example: Mega 6')),
                     ])

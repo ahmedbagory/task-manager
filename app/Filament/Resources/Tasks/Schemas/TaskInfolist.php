@@ -7,6 +7,7 @@ use App\Enums\TaskSource;
 use App\Enums\TaskStatus;
 use App\Models\Task;
 use Filament\Infolists\Components\IconEntry;
+use Filament\Infolists\Components\RepeatableEntry;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
@@ -44,8 +45,8 @@ class TaskInfolist
                     ->columns(3),
                 Section::make(__('Assignment & Classification'))
                     ->components([
-                        TextEntry::make('department.name')
-                            ->label(__('Department'))
+                        TextEntry::make('department.hierarchy_name')
+                            ->label('القسم / الوحدة')
                             ->placeholder('-'),
                         TextEntry::make('category.name')
                             ->label(__('Category'))
@@ -70,6 +71,73 @@ class TaskInfolist
                             ->placeholder('-'),
                     ])
                     ->columns(3),
+                Section::make(__('أهداف التعيين'))
+                    ->components([
+                        RepeatableEntry::make('assignmentTargets')
+                            ->label('')
+                            ->schema([
+                                TextEntry::make('target_type_label')
+                                    ->label(__('النوع'))
+                                    ->badge()
+                                    ->color(fn ($record) => match ($record->target_type) {
+                                        'user' => 'success',
+                                        'department' => $record->target?->parent_id ? 'warning' : 'primary',
+                                        'company_category' => 'primary',
+                                        'branch' => 'warning',
+                                        default => 'gray',
+                                    }),
+                                TextEntry::make('target_name')
+                                    ->label(__('الهدف')),
+                                TextEntry::make('assignedByUser.name')
+                                    ->label(__('بواسطة'))
+                                    ->placeholder('—'),
+                                TextEntry::make('created_at')
+                                    ->label(__('التاريخ'))
+                                    ->dateTime('Y-m-d H:i'),
+                            ])
+                            ->columns(4)
+                            ->placeholder(__('لا توجد أهداف تعيين')),
+                    ])
+                    ->visible(fn ($record) => $record->assignmentTargets()->exists()),
+                Section::make(__('سجل التعيينات'))
+                    ->components([
+                        RepeatableEntry::make('assignmentHistories')
+                            ->label('')
+                            ->schema([
+                                TextEntry::make('action_label')
+                                    ->label(__('الإجراء'))
+                                    ->badge()
+                                    ->color(fn ($record) => match ($record->action) {
+                                        'assigned' => 'info',
+                                        'reassigned' => 'warning',
+                                        'accepted' => 'success',
+                                        'started' => 'primary',
+                                        'completed' => 'success',
+                                        'rejected' => 'danger',
+                                        default => 'gray',
+                                    }),
+                                TextEntry::make('fromUser.name')
+                                    ->label(__('من'))
+                                    ->placeholder('—'),
+                                TextEntry::make('toUser.name')
+                                    ->label(__('إلى'))
+                                    ->placeholder('—'),
+                                TextEntry::make('performedByUser.name')
+                                    ->label(__('بواسطة'))
+                                    ->placeholder('—'),
+                                TextEntry::make('note')
+                                    ->label(__('ملاحظة'))
+                                    ->placeholder('—')
+                                    ->limit(50),
+                                TextEntry::make('created_at')
+                                    ->label(__('التاريخ'))
+                                    ->dateTime('Y-m-d H:i'),
+                            ])
+                            ->columns(6)
+                            ->placeholder(__('لا يوجد سجل')),
+                    ])
+                    ->visible(fn ($record) => $record->assignmentHistories()->exists())
+                    ->collapsible(),
                 Section::make(__('Audit'))
                     ->components([
                         TextEntry::make('reportedByUser.name')

@@ -6,6 +6,7 @@ use App\Enums\TaskPriority;
 use App\Enums\TaskSource;
 use App\Enums\TaskStatus;
 use App\Filament\Resources\Tasks\TaskResource;
+use App\Services\Departments\DepartmentHierarchyService;
 use App\Support\Rbac;
 use Filament\Forms\Components\DatePicker;
 use Filament\Tables\Columns\TextColumn;
@@ -42,9 +43,8 @@ class TaskReportsTable
                     ->badge()
                     ->formatStateUsing(fn (TaskSource|string $state): string => ($state instanceof TaskSource ? $state : TaskSource::from((string) $state))->label())
                     ->color(fn (TaskSource|string $state): string => ($state instanceof TaskSource ? $state : TaskSource::from((string) $state))->color()),
-                TextColumn::make('department.name')
-                    ->label(__('Department'))
-                    ->sortable()
+                TextColumn::make('department.hierarchy_name')
+                    ->label('القسم / الوحدة')
                     ->toggleable(),
                 TextColumn::make('category.name')
                     ->label(__('Category'))
@@ -89,8 +89,8 @@ class TaskReportsTable
                             );
                     }),
                 SelectFilter::make('department_id')
-                    ->label(__('Department'))
-                    ->relationship('department', 'name')
+                    ->label('القسم / الوحدة')
+                    ->options(fn (): array => app(DepartmentHierarchyService::class)->hierarchyOptions())
                     ->preload()
                     ->searchable(),
                 SelectFilter::make('assigned_to_user_id')

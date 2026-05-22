@@ -32,7 +32,7 @@ class MyTaskWorkspaceController extends Controller
 
         $tasksQuery = Task::query()
             ->where('assigned_to_user_id', $user->id)
-            ->with(['department', 'category'])
+            ->with(['department.parent', 'category'])
             ->orderByDesc('updated_at');
 
         if (in_array($selectedStatus, $statusValues, true)) {
@@ -60,7 +60,7 @@ class MyTaskWorkspaceController extends Controller
         $user = $request->user();
 
         $task->load([
-            'department',
+            'department.parent',
             'category',
             'assignments.assignedByUser',
             'assignments.assignedToUser',

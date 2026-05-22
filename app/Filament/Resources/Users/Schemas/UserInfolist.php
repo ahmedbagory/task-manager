@@ -25,8 +25,11 @@ class UserInfolist
                         TextEntry::make('roles_display')
                             ->label(__('Role'))
                             ->state(fn (User $record): string => $record->roles->pluck('name')->join(', ') ?: '-'),
-                        TextEntry::make('department.name')
-                            ->label(__('Department'))
+                        TextEntry::make('department.hierarchy_name')
+                            ->label('القسم / الوحدة')
+                            ->placeholder('-'),
+                        TextEntry::make('department.parent.name')
+                            ->label('القسم الرئيسي')
                             ->placeholder('-'),
                         TextEntry::make('work_location')
                             ->label(__('Work Location'))

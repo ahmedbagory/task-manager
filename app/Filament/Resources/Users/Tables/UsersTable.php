@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Users\Tables;
 
 use App\Models\User;
+use App\Services\Departments\DepartmentHierarchyService;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -34,10 +35,14 @@ class UsersTable
                     ->state(fn (User $record): string => $record->roles->pluck('name')->join(', ') ?: '-')
                     ->badge()
                     ->searchable(),
-                TextColumn::make('department.name')
-                    ->label(__('Department'))
-                    ->sortable()
+                TextColumn::make('department.hierarchy_name')
+                    ->label('القسم / الوحدة')
                     ->placeholder('-'),
+                TextColumn::make('department.parent.name')
+                    ->label('القسم الرئيسي')
+                    ->sortable()
+                    ->placeholder('-')
+                    ->toggleable(),
                 TextColumn::make('work_location')
                     ->label(__('Location'))
                     ->searchable()
@@ -50,8 +55,8 @@ class UsersTable
             ])
             ->filters([
                 SelectFilter::make('department_id')
-                    ->relationship('department', 'name')
-                    ->label(__('Department')),
+                    ->label('القسم / الوحدة')
+                    ->options(fn (): array => app(DepartmentHierarchyService::class)->hierarchyOptions(childrenOnly: true)),
                 SelectFilter::make('role')
                     ->label(__('Role'))
                     ->relationship('roles', 'name'),

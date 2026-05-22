@@ -43,7 +43,9 @@ class TaskListResource extends JsonResource
             'department' => $this->department ? [
                 'id' => $this->department->id,
                 'name' => $this->department->name,
+                'hierarchy_name' => $this->department->hierarchy_name,
                 'code' => $this->department->code,
+                'parent_id' => $this->department->parent_id,
             ] : null,
             'category' => $this->category ? [
                 'id' => $this->category->id,

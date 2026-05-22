@@ -7,6 +7,7 @@ use App\Enums\TaskStatus;
 use App\Models\Task;
 use App\Models\User;
 use App\Models\WhatsappMessage;
+use App\Services\Notifications\FcmNotificationService;
 use App\Services\Notifications\TaskWorkflowNotificationService;
 use App\Services\WhatsApp\TaskWhatsAppNotificationService;
 use Illuminate\Support\Facades\DB;
@@ -17,6 +18,8 @@ class TaskService
         private readonly TaskNumberGenerator $taskNumberGenerator,
         private readonly TaskWhatsAppNotificationService $taskWhatsAppNotificationService,
         private readonly TaskWorkflowNotificationService $taskWorkflowNotificationService,
+        private readonly FcmNotificationService $fcmNotificationService,
+        private readonly TaskAssignmentTargetResolver $taskAssignmentTargetResolver,
     ) {}
 
     /**
@@ -25,6 +28,7 @@ class TaskService
     public function createManualTask(array $data, User $actor): Task
     {
         return DB::transaction(function () use ($data, $actor): Task {
+            $targets = $this->taskAssignmentTargetResolver->extractTargets($data);
             unset($data['task_number'], $data['created_by'], $data['updated_by'], $data['source']);
 
             $data['task_number'] = $this->taskNumberGenerator->generate();
@@ -33,7 +37,11 @@ class TaskService
             $data['created_by'] = $actor->id;
             $data['updated_by'] = $actor->id;
 
-            return Task::query()->create($data);
+            $task = Task::query()->create($data);
+
+            $this->taskAssignmentTargetResolver->syncTargets($task, $targets, $actor);
+
+            return $task;
         });
     }
 
@@ -89,9 +97,10 @@ class TaskService
      */
     public function updateTask(Task $task, array $data, User $actor): Task
     {
+        $targets = $this->taskAssignmentTargetResolver->extractTargets($data);
         unset($data['task_number'], $data['created_by'], $data['updated_by'], $data['source']);
 
-        return DB::transaction(function () use ($task, $data, $actor): Task {
+        return DB::transaction(function () use ($task, $data, $actor, $targets): Task {
             $lockedTask = Task::query()->lockForUpdate()->findOrFail($task->id);
 
             if (in_array($lockedTask->status->value, [TaskStatus::COMPLETED->value, TaskStatus::CANCELLED->value], true)) {
@@ -101,6 +110,8 @@ class TaskService
             $lockedTask->fill($data);
             $lockedTask->updated_by = $actor->id;
             $lockedTask->save();
+
+            $this->taskAssignmentTargetResolver->syncTargets($lockedTask, $targets, $actor);
 
             return $lockedTask->refresh();
         });
@@ -132,12 +143,13 @@ class TaskService
             $lockedTask->save();
 
             if ($targetStatus === TaskStatus::COMPLETED && (! $wasCompleted)) {
-                DB::afterCommit(function () use ($lockedTask): void {
+                DB::afterCommit(function () use ($lockedTask, $actor): void {
                     $freshTask = Task::query()->find($lockedTask->id);
 
                     if ($freshTask) {
                         $this->taskWhatsAppNotificationService->notifyTaskCompleted($freshTask);
                         $this->taskWorkflowNotificationService->notifyTaskCompletedToDispatchers($freshTask);
+                        $this->fcmNotificationService->notifyDispatchersTaskUpdate($freshTask, 'completed', $actor);
                     }
                 });
             }

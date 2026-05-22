@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\TaskCategories\Tables;
 
+use App\Services\Departments\DepartmentHierarchyService;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -27,10 +28,8 @@ class TaskCategoriesTable
                     ->searchable()
                     ->sortable()
                     ->placeholder('-'),
-                TextColumn::make('department.name')
-                    ->label(__('Department'))
-                    ->searchable()
-                    ->sortable()
+                TextColumn::make('department.hierarchy_name')
+                    ->label('القسم / الوحدة')
                     ->placeholder('-'),
                 IconColumn::make('is_active')
                     ->label(__('Active'))
@@ -43,8 +42,8 @@ class TaskCategoriesTable
             ])
             ->filters([
                 SelectFilter::make('department_id')
-                    ->label(__('Department'))
-                    ->relationship('department', 'name'),
+                    ->label('القسم / الوحدة')
+                    ->options(fn (): array => app(DepartmentHierarchyService::class)->hierarchyOptions()),
                 TernaryFilter::make('is_active')
                     ->label(__('Active')),
             ])

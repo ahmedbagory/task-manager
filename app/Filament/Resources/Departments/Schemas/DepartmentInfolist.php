@@ -13,30 +13,45 @@ class DepartmentInfolist
     {
         return $schema
             ->components([
-                Section::make(__('Department'))
+                Section::make('تفاصيل القسم / الوحدة')
                     ->components([
-                        TextEntry::make('name')
-                            ->label(__('Name')),
+                        TextEntry::make('hierarchy_name')
+                            ->label('الاسم'),
                         TextEntry::make('code')
-                            ->label(__('Code'))
+                            ->label('الكود')
                             ->placeholder('-'),
+                        TextEntry::make('level_label')
+                            ->label('النوع')
+                            ->badge(),
+                        TextEntry::make('parent.name')
+                            ->label('القسم الرئيسي')
+                            ->placeholder('—'),
                         IconEntry::make('is_active')
-                            ->label(__('Active'))
+                            ->label('مفعّل')
                             ->boolean(),
+                        TextEntry::make('children_count')
+                            ->label('الوحدات التابعة')
+                            ->state(fn ($record) => $record->children()->count()),
+                        TextEntry::make('users_count')
+                            ->label('الموظفون')
+                            ->state(fn ($record) => $record->users()->count()),
+                        TextEntry::make('tasks_count')
+                            ->label('المهام')
+                            ->state(fn ($record) => $record->tasks()->count()),
                         TextEntry::make('description')
-                            ->label(__('Description'))
+                            ->label('الوصف')
                             ->placeholder('-')
                             ->columnSpanFull(),
                         TextEntry::make('created_at')
-                            ->label(__('Created At'))
+                            ->label('تاريخ الإنشاء')
                             ->dateTime()
                             ->placeholder('-'),
                         TextEntry::make('updated_at')
-                            ->label(__('Updated At'))
+                            ->label('آخر تحديث')
                             ->dateTime()
                             ->placeholder('-'),
                     ])
-                    ->columns(2),
+                    ->columns(3),
             ]);
     }
 }

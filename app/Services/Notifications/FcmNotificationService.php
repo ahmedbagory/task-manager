@@ -5,6 +5,7 @@ namespace App\Services\Notifications;
 use App\Models\DeviceToken;
 use App\Models\Task;
 use App\Models\User;
+use App\Support\Rbac;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -68,6 +69,45 @@ class FcmNotificationService
             'task_id' => (string) $task->id,
             'action' => $action,
         ]);
+    }
+
+    /**
+     * Notify all dispatchers/admins about a task event.
+     */
+    public function notifyDispatchersTaskUpdate(Task $task, string $action, ?User $actor = null): void
+    {
+        $actionLabels = [
+            'accepted' => __('accepted'),
+            'started' => __('started'),
+            'completed' => __('completed'),
+            'rejected' => __('rejected'),
+        ];
+
+        $label = $actionLabels[$action] ?? $action;
+        $actorName = $actor?->name ?? __('Unknown');
+
+        $title = __('Task') . " {$task->task_number} {$label}";
+        $body = "{$actorName} {$label} \"{$task->title}\"";
+
+        $data = [
+            'type' => 'task_dispatcher_update',
+            'task_id' => (string) $task->id,
+            'task_number' => $task->task_number ?? '',
+            'action' => $action,
+        ];
+
+        $dispatchers = User::query()
+            ->whereHas('roles', fn ($q) => $q->whereIn('name', [Rbac::SUPER_ADMIN, Rbac::ADMIN, Rbac::DISPATCHER]))
+            ->where('id', '!=', $actor?->id)
+            ->get();
+
+        foreach ($dispatchers as $dispatcher) {
+            $tokens = $this->tokensForUser($dispatcher);
+
+            if (! empty($tokens)) {
+                $this->sendTokens($tokens, $title, $body, $data);
+            }
+        }
     }
 
     /**

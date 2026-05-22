@@ -6,6 +6,7 @@ use App\Enums\TaskAssignmentStatus;
 use App\Enums\TaskStatus;
 use App\Models\Task;
 use App\Models\TaskAssignment;
+use App\Models\TaskAssignmentHistory;
 use App\Models\User;
 use App\Services\Notifications\FcmNotificationService;
 use App\Services\Notifications\TaskWorkflowNotificationService;
@@ -57,6 +58,14 @@ class TaskAssignmentService
                 'status' => TaskStatus::ASSIGNED->value,
                 'updated_by' => $assignedBy?->id,
             ])->save();
+
+            TaskAssignmentHistory::query()->create([
+                'task_id' => $lockedTask->id,
+                'action' => 'assigned',
+                'to_user_id' => $assignedToUserId,
+                'performed_by' => $assignedBy?->id,
+                'note' => $note,
+            ]);
 
             DB::afterCommit(function () use ($lockedTask, $assignment): void {
                 $freshTask = Task::query()->find($lockedTask->id);
@@ -120,6 +129,21 @@ class TaskAssignmentService
                 'updated_by' => $actor->id,
             ])->save();
 
+            TaskAssignmentHistory::query()->create([
+                'task_id' => $lockedTask->id,
+                'action' => 'accepted',
+                'to_user_id' => $actor->id,
+                'performed_by' => $actor->id,
+            ]);
+
+            DB::afterCommit(function () use ($lockedTask, $actor): void {
+                $freshTask = Task::query()->find($lockedTask->id);
+
+                if ($freshTask) {
+                    $this->fcmNotificationService->notifyDispatchersTaskUpdate($freshTask, 'accepted', $actor);
+                }
+            });
+
             return $lockedAssignment->refresh();
         });
     }
@@ -157,6 +181,14 @@ class TaskAssignmentService
                 'updated_by' => $actor->id,
             ])->save();
 
+            TaskAssignmentHistory::query()->create([
+                'task_id' => $lockedTask->id,
+                'action' => 'rejected',
+                'to_user_id' => $actor->id,
+                'performed_by' => $actor->id,
+                'note' => $reason,
+            ]);
+
             DB::afterCommit(function () use ($lockedTask, $lockedAssignment, $actor): void {
                 $freshTask = Task::query()->find($lockedTask->id);
                 $freshAssignment = TaskAssignment::query()
@@ -170,6 +202,7 @@ class TaskAssignmentService
                         assignment: $freshAssignment,
                         actor: $actor,
                     );
+                    $this->fcmNotificationService->notifyDispatchersTaskUpdate($freshTask, 'rejected', $actor);
                 }
             });
 
@@ -210,6 +243,21 @@ class TaskAssignmentService
                 'started_at' => $lockedTask->started_at ?? now(),
                 'updated_by' => $actor->id,
             ])->save();
+
+            TaskAssignmentHistory::query()->create([
+                'task_id' => $lockedTask->id,
+                'action' => 'started',
+                'to_user_id' => $actor->id,
+                'performed_by' => $actor->id,
+            ]);
+
+            DB::afterCommit(function () use ($lockedTask, $actor): void {
+                $freshTask = Task::query()->find($lockedTask->id);
+
+                if ($freshTask) {
+                    $this->fcmNotificationService->notifyDispatchersTaskUpdate($freshTask, 'started', $actor);
+                }
+            });
 
             return $lockedAssignment->refresh();
         });
@@ -318,7 +366,14 @@ class TaskAssignmentService
                 'updated_by' => $actor->id,
             ])->save();
 
-            DB::afterCommit(function () use ($lockedTask, $lockedAssignment): void {
+            TaskAssignmentHistory::query()->create([
+                'task_id' => $lockedTask->id,
+                'action' => 'completed',
+                'to_user_id' => $actor->id,
+                'performed_by' => $actor->id,
+            ]);
+
+            DB::afterCommit(function () use ($lockedTask, $lockedAssignment, $actor): void {
                 $freshTask = Task::query()->find($lockedTask->id);
                 $freshAssignment = TaskAssignment::query()
                     ->whereKey($lockedAssignment->id)
@@ -331,10 +386,79 @@ class TaskAssignmentService
                         task: $freshTask,
                         assignment: $freshAssignment,
                     );
+                    $this->fcmNotificationService->notifyDispatchersTaskUpdate($freshTask, 'completed', $actor);
                 }
             });
 
             return $lockedAssignment->refresh();
+        });
+    }
+
+    public function reassignTask(Task $task, int $newUserId, User $actor, ?string $reason = null): TaskAssignment
+    {
+        return DB::transaction(function () use ($task, $newUserId, $actor, $reason): TaskAssignment {
+            $lockedTask = Task::query()->lockForUpdate()->findOrFail($task->id);
+
+            if (in_array($lockedTask->status->value, [TaskStatus::COMPLETED->value, TaskStatus::CANCELLED->value], true)) {
+                throw ValidationException::withMessages([
+                    'task' => 'Completed or cancelled tasks cannot be reassigned.',
+                ]);
+            }
+
+            $previousUserId = $lockedTask->assigned_to_user_id;
+
+            // Cancel any active assignments
+            $lockedTask->assignments()
+                ->whereIn('status', [TaskAssignmentStatus::ASSIGNED->value, TaskAssignmentStatus::ACCEPTED->value])
+                ->each(function (TaskAssignment $a) {
+                    $a->forceFill(['status' => TaskAssignmentStatus::REJECTED, 'note' => 'Reassigned'])->save();
+                });
+
+            User::query()->findOrFail($newUserId);
+
+            $assignment = $lockedTask->assignments()->create([
+                'assigned_to_user_id' => $newUserId,
+                'assigned_by_user_id' => $actor->id,
+                'note' => $reason,
+                'status' => TaskAssignmentStatus::ASSIGNED->value,
+                'assigned_at' => now(),
+            ]);
+
+            $lockedTask->forceFill([
+                'assigned_to_user_id' => $newUserId,
+                'status' => TaskStatus::ASSIGNED->value,
+                'updated_by' => $actor->id,
+            ])->save();
+
+            TaskAssignmentHistory::query()->create([
+                'task_id' => $lockedTask->id,
+                'action' => 'reassigned',
+                'from_user_id' => $previousUserId,
+                'to_user_id' => $newUserId,
+                'performed_by' => $actor->id,
+                'note' => $reason,
+            ]);
+
+            DB::afterCommit(function () use ($lockedTask, $assignment): void {
+                $freshTask = Task::query()->find($lockedTask->id);
+                $freshAssignment = TaskAssignment::query()
+                    ->whereKey($assignment->id)
+                    ->with('assignedToUser')
+                    ->first();
+
+                if ($freshTask) {
+                    $this->taskWhatsAppNotificationService->notifyTaskAssigned($freshTask);
+
+                    if ($freshAssignment?->assignedToUser) {
+                        $this->fcmNotificationService->notifyNewTaskAssigned(
+                            task: $freshTask,
+                            assignee: $freshAssignment->assignedToUser,
+                        );
+                    }
+                }
+            });
+
+            return $assignment->refresh();
         });
     }
 

@@ -6,6 +6,7 @@ use App\Filament\Resources\Tasks\Pages\CreateTask;
 use App\Filament\Resources\Tasks\Pages\EditTask;
 use App\Filament\Resources\Tasks\Pages\ListTasks;
 use App\Filament\Resources\Tasks\Pages\ViewTask;
+use App\Filament\Resources\Tasks\RelationManagers\AssignmentHistoryRelationManager;
 use App\Filament\Resources\Tasks\RelationManagers\AssignmentsRelationManager;
 use App\Filament\Resources\Tasks\RelationManagers\AttachmentsRelationManager;
 use App\Filament\Resources\Tasks\RelationManagers\CommentsRelationManager;
@@ -51,6 +52,7 @@ class TaskResource extends Resource
     {
         return [
             AssignmentsRelationManager::class,
+            AssignmentHistoryRelationManager::class,
             CommentsRelationManager::class,
             AttachmentsRelationManager::class,
         ];

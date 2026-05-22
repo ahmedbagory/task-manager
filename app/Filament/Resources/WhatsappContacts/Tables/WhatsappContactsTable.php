@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\WhatsappContacts\Tables;
 
+use App\Services\Departments\DepartmentHierarchyService;
 use App\Support\BidiText;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
@@ -29,9 +30,8 @@ class WhatsappContactsTable
                     ->html()
                     ->searchable()
                     ->placeholder('-'),
-                TextColumn::make('department.name')
-                    ->label(__('Department'))
-                    ->sortable()
+                TextColumn::make('department.hierarchy_name')
+                    ->label('القسم / الوحدة')
                     ->placeholder('-'),
                 TextColumn::make('default_location')
                     ->label(__('Branch / Location'))
@@ -55,8 +55,8 @@ class WhatsappContactsTable
             ])
             ->filters([
                 SelectFilter::make('department_id')
-                    ->relationship('department', 'name')
-                    ->label(__('Department')),
+                    ->label('القسم / الوحدة')
+                    ->options(fn (): array => app(DepartmentHierarchyService::class)->hierarchyOptions()),
             ])
             ->defaultSort('updated_at', 'desc')
             ->recordActions([

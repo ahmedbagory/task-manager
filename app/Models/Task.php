@@ -98,4 +98,14 @@ class Task extends Model
     {
         return $this->hasMany(WhatsappMessage::class);
     }
+
+    public function assignmentTargets(): HasMany
+    {
+        return $this->hasMany(TaskAssignmentTarget::class);
+    }
+
+    public function assignmentHistories(): HasMany
+    {
+        return $this->hasMany(TaskAssignmentHistory::class)->orderByDesc('created_at');
+    }
 }

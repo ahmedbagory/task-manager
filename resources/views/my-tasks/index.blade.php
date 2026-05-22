@@ -64,7 +64,7 @@
                     <span class="rounded-full px-2.5 py-1 font-semibold {{ $statusClass }}">{{ __('Status') }}: {{ $task->status->label() }}</span>
                     <span class="rounded-full px-2.5 py-1 font-semibold {{ $priorityClass }}">{{ __('Priority') }}: {{ $task->priority->label() }}</span>
                     @if ($task->department)
-                        <span class="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-700">{{ __('Department') }}: {{ $task->department->name }}</span>
+                        <span class="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-700">{{ __('Department') }}: {{ $task->department->hierarchy_name }}</span>
                     @endif
                     @if ($task->due_at)
                         <span class="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-700">{{ __('Due') }}: {{ $task->due_at->format('Y-m-d H:i') }}</span>

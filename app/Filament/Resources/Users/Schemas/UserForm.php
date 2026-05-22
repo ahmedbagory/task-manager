@@ -2,7 +2,7 @@
 
 namespace App\Filament\Resources\Users\Schemas;
 
-use App\Models\Department;
+use App\Services\Departments\DepartmentHierarchyService;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Components\Section;
@@ -65,12 +65,8 @@ class UserForm
                 Section::make(__('Work Profile'))
                     ->components([
                         Select::make('department_id')
-                            ->label(__('Department'))
-                            ->options(fn (): array => Department::query()
-                                ->where('is_active', true)
-                                ->orderBy('name')
-                                ->pluck('name', 'id')
-                                ->all())
+                            ->label('القسم / الوحدة')
+                            ->options(fn (): array => app(DepartmentHierarchyService::class)->employeeDepartmentOptions())
                             ->searchable()
                             ->preload(),
                         TextInput::make('work_location')

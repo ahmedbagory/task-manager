@@ -4,6 +4,14 @@ namespace App\Providers\Filament;
 
 use App\Filament\Pages\ApiSettings;
 use App\Filament\Pages\WhatsAppSession;
+use App\Filament\Resources\Departments\DepartmentResource;
+use App\Filament\Resources\Roles\RoleResource;
+use App\Filament\Resources\TaskCategories\TaskCategoryResource;
+use App\Filament\Resources\TaskReports\TaskReportResource;
+use App\Filament\Resources\Tasks\TaskResource;
+use App\Filament\Resources\Users\UserResource;
+use App\Filament\Resources\WhatsappContacts\WhatsappContactResource;
+use App\Filament\Resources\WhatsappMessages\WhatsappMessageResource;
 use App\Http\Middleware\SetLocale;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
@@ -60,7 +68,16 @@ class AdminPanelProvider extends PanelProvider
                     view('components.locale-switcher', ['context' => 'login'])->render()
                 )
             )
-            ->discoverResources(in: app_path('Filament/Resources'), for: 'App\Filament\Resources')
+            ->resources([
+                DepartmentResource::class,
+                TaskCategoryResource::class,
+                TaskResource::class,
+                TaskReportResource::class,
+                UserResource::class,
+                RoleResource::class,
+                WhatsappContactResource::class,
+                WhatsappMessageResource::class,
+            ])
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\Filament\Pages')
             ->pages([
                 Dashboard::class,

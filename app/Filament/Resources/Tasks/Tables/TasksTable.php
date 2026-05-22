@@ -5,6 +5,7 @@ namespace App\Filament\Resources\Tasks\Tables;
 use App\Enums\TaskPriority;
 use App\Enums\TaskSource;
 use App\Enums\TaskStatus;
+use App\Services\Departments\DepartmentHierarchyService;
 use App\Support\Rbac;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
@@ -46,15 +47,14 @@ class TasksTable
                     ->badge()
                     ->formatStateUsing(fn (TaskSource|string $state): string => ($state instanceof TaskSource ? $state : TaskSource::from((string) $state))->label())
                     ->color(fn (TaskSource|string $state): string => ($state instanceof TaskSource ? $state : TaskSource::from((string) $state))->color()),
-                TextColumn::make('department.name')
-                    ->label(__('Department'))
-                    ->searchable()
-                    ->sortable()
+                TextColumn::make('department.hierarchy_name')
+                    ->label('القسم / الوحدة')
                     ->placeholder('-'),
                 TextColumn::make('assignedToUser.name')
                     ->label(__('Assigned Employee'))
                     ->searchable()
                     ->sortable()
+                    ->description(fn ($record) => $record->assignedToUser?->department?->hierarchy_name)
                     ->placeholder('-'),
                 TextColumn::make('due_at')
                     ->label(__('Due At'))
@@ -96,8 +96,8 @@ class TasksTable
                 SelectFilter::make('source')
                     ->options(TaskSource::options()),
                 SelectFilter::make('department_id')
-                    ->label(__('Department'))
-                    ->relationship('department', 'name'),
+                    ->label('القسم / الوحدة')
+                    ->options(fn (): array => app(DepartmentHierarchyService::class)->hierarchyOptions()),
                 SelectFilter::make('assigned_to_user_id')
                     ->label(__('Assigned Employee'))
                     ->relationship(

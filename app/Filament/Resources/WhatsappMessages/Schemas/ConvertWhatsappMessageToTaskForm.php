@@ -6,6 +6,7 @@ use App\Enums\TaskPriority;
 use App\Models\Department;
 use App\Models\TaskCategory;
 use App\Models\User;
+use App\Services\Departments\DepartmentHierarchyService;
 use App\Support\Rbac;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Select;
@@ -37,12 +38,8 @@ class ConvertWhatsappMessageToTaskForm
                         ->columnSpanFull()
                         ->helperText(__('Original WhatsApp message text is always preserved in the task description.')),
                     Select::make('department_id')
-                        ->label(__('Department'))
-                        ->options(fn (): array => Department::query()
-                            ->where('is_active', true)
-                            ->orderBy('name')
-                            ->pluck('name', 'id')
-                            ->all())
+                        ->label('القسم / الوحدة')
+                        ->options(fn (): array => app(DepartmentHierarchyService::class)->hierarchyOptions())
                         ->searchable()
                         ->preload()
                         ->live()
@@ -57,8 +54,16 @@ class ConvertWhatsappMessageToTaskForm
                             $departmentId = $get('department_id');
 
                             if (filled($departmentId)) {
+                                $parentId = Department::query()
+                                    ->whereKey((int) $departmentId)
+                                    ->value('parent_id');
+
                                 $query->where(fn ($subQuery) => $subQuery
                                     ->where('department_id', $departmentId)
+                                    ->when(
+                                        filled($parentId),
+                                        fn ($builder) => $builder->orWhere('department_id', $parentId),
+                                    )
                                     ->orWhereNull('department_id'));
                             }
 

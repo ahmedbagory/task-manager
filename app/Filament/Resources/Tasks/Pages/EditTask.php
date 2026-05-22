@@ -6,6 +6,7 @@ use App\Filament\Resources\Tasks\TaskResource;
 use App\Models\Task;
 use App\Models\User;
 use App\Services\Tasks\TaskAssignmentService;
+use App\Services\Tasks\TaskAssignmentTargetResolver;
 use App\Services\Tasks\TaskService;
 use App\Support\Rbac;
 use Filament\Actions\Action;
@@ -27,11 +28,20 @@ class EditTask extends EditRecord
     {
         return [
             $this->getAssignEmployeeAction(),
+            $this->getReassignAction(),
             ViewAction::make(),
             DeleteAction::make(),
             ForceDeleteAction::make(),
             RestoreAction::make(),
         ];
+    }
+
+    protected function mutateFormDataBeforeFill(array $data): array
+    {
+        return array_merge(
+            $data,
+            app(TaskAssignmentTargetResolver::class)->fillFormTargets($this->record),
+        );
     }
 
     protected function handleRecordUpdate(Model $record, array $data): Model
@@ -51,11 +61,7 @@ class EditTask extends EditRecord
             ->form([
                 Select::make('assigned_to_user_id')
                     ->label(__('Employee'))
-                    ->options(fn (): array => User::query()
-                        ->role([Rbac::EMPLOYEE, Rbac::SUPERVISOR])
-                        ->orderBy('name')
-                        ->pluck('name', 'id')
-                        ->all())
+                    ->options(fn (): array => app(TaskAssignmentTargetResolver::class)->assignmentOptionsForTask($this->record))
                     ->required()
                     ->searchable()
                     ->preload(),
@@ -85,6 +91,56 @@ class EditTask extends EditRecord
                     ->send();
             })
             ->modalSubmitActionLabel(__('Assign'))
+            ->modalWidth('lg');
+    }
+
+    protected function getReassignAction(): Action
+    {
+        return Action::make('reassignEmployee')
+            ->label(__('إعادة تعيين'))
+            ->icon('heroicon-o-arrow-path')
+            ->color('warning')
+            ->visible(fn (): bool => $this->record->assigned_to_user_id !== null
+                && auth()->user()?->can('tasks.reassign'))
+            ->form([
+                Select::make('new_user_id')
+                    ->label(__('الموظف الجديد'))
+                    ->options(fn (): array => app(TaskAssignmentTargetResolver::class)->assignmentOptionsForTask(
+                        task: $this->record,
+                        excludeUserId: $this->record->assigned_to_user_id,
+                    ))
+                    ->required()
+                    ->searchable()
+                    ->preload(),
+                Textarea::make('reason')
+                    ->label(__('سبب إعادة التعيين'))
+                    ->rows(3)
+                    ->maxLength(1000),
+            ])
+            ->action(function (array $data, TaskAssignmentService $taskAssignmentService): void {
+                /** @var Task $task */
+                $task = $this->record;
+
+                /** @var User $actor */
+                $actor = auth()->user();
+
+                $taskAssignmentService->reassignTask(
+                    task: $task,
+                    newUserId: (int) $data['new_user_id'],
+                    actor: $actor,
+                    reason: $data['reason'] ?? null,
+                );
+
+                $this->record = $task->fresh();
+
+                Notification::make()
+                    ->title(__('تم إعادة التعيين بنجاح'))
+                    ->success()
+                    ->send();
+            })
+            ->requiresConfirmation()
+            ->modalHeading(__('إعادة تعيين المهمة'))
+            ->modalSubmitActionLabel(__('إعادة تعيين'))
             ->modalWidth('lg');
     }
 }

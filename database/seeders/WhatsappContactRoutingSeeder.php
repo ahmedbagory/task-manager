@@ -15,7 +15,7 @@ class WhatsappContactRoutingSeeder extends Seeder
     {
         $department = Department::query()
             ->where('is_active', true)
-            ->where('name', 'Maintenance')
+            ->where('code', '04-OPS-MNT')
             ->first();
 
         $contact = WhatsappContact::query()->firstOrNew([
