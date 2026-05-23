@@ -46,7 +46,9 @@ class ViewTask extends ViewRecord
         return [
             $this->getAssignAction(),
             $this->getReassignAction(),
-            EditAction::make(),
+            EditAction::make()
+                ->color('gray')
+                ->outlined(),
         ];
     }
 
@@ -152,6 +154,7 @@ class ViewTask extends ViewRecord
             ->label(__('تعيين'))
             ->icon('heroicon-o-user-plus')
             ->color('primary')
+            ->button()
             ->visible(fn (): bool => $this->canShowAssignAction())
             ->form($this->buildAssignFormFields())
             ->fillForm(fn (): array => app(TaskAssignmentTargetResolver::class)->fillFormTargets($this->getTask()))
@@ -194,6 +197,8 @@ class ViewTask extends ViewRecord
             ->label(__('إعادة التعيين'))
             ->icon('heroicon-o-arrow-path')
             ->color('danger')
+            ->button()
+            ->outlined()
             ->visible(fn (): bool => $this->canShowReassignAction())
             ->requiresConfirmation()
             ->modalHeading(__('إعادة تعيين المهمة'))

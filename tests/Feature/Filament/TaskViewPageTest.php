@@ -219,7 +219,7 @@ class TaskViewPageTest extends TestCase
         $this->actingAs($dispatcher);
 
         Livewire::test(ViewTask::class, ['record' => $task->getRouteKey()])
-            ->assertSee('غير مسنَدة')
+            ->assertSee('غير مسندة')
             ->assertSee('بانتظار الإسناد')
             ->assertDontSee('بانتظار قبول أحد الموظفين');
     }
@@ -253,8 +253,9 @@ class TaskViewPageTest extends TestCase
         $this->actingAs($dispatcher);
 
         Livewire::test(ViewTask::class, ['record' => $task->getRouteKey()])
-            ->assertSee('جميع الموظفين')
-            ->assertSee('الكل');
+            ->assertSee('الأسماء المستهدفة')
+            ->assertSee($employee->name)
+            ->assertSee($supervisor->name);
     }
 
     public function test_dispatcher_can_preview_task_attachment_from_admin_context(): void
