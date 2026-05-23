@@ -6,6 +6,7 @@ use App\Enums\TaskPriority;
 use App\Enums\TaskSource;
 use App\Enums\TaskStatus;
 use App\Models\Task;
+use App\Models\TaskAssignmentTarget;
 use Filament\Infolists\Components\IconEntry;
 use Filament\Infolists\Components\RepeatableEntry;
 use Filament\Infolists\Components\TextEntry;
@@ -79,11 +80,11 @@ class TaskInfolist
                                 TextEntry::make('target_type_label')
                                     ->label(__('النوع'))
                                     ->badge()
-                                    ->color(fn ($record) => match ($record->target_type) {
-                                        'user' => 'success',
-                                        'department' => $record->target?->parent_id ? 'warning' : 'primary',
-                                        default => 'gray',
-                                    }),
+                                    ->color(fn (TaskAssignmentTarget $record) => $record->isUserTarget()
+                                        ? 'success'
+                                        : ($record->isDepartmentTarget()
+                                            ? ($record->target?->parent_id ? 'warning' : 'primary')
+                                            : 'gray')),
                                 TextEntry::make('target_name')
                                     ->label(__('الهدف')),
                                 TextEntry::make('assignedByUser.name')

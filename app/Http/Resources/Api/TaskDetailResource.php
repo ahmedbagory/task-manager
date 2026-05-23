@@ -25,7 +25,7 @@ class TaskDetailResource extends JsonResource
 
         if ($this->relationLoaded('assignmentTargets')) {
             $base['assignment_targets'] = $this->assignmentTargets->map(fn ($target): array => [
-                'type' => $target->target_type,
+                'type' => $target->normalizedTargetType(),
                 'target_id' => $target->target_id,
                 'name' => $target->target_name,
                 'type_label' => $target->target_type_label,

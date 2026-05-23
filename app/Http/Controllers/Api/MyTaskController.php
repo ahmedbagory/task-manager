@@ -18,6 +18,7 @@ use App\Http\Resources\Api\TaskListResource;
 use App\Models\Task;
 use App\Models\TaskAssignment;
 use App\Models\TaskAssignmentHistory;
+use App\Models\TaskAssignmentTarget;
 use App\Models\User;
 use App\Services\Tasks\TaskAssignmentService;
 use Illuminate\Database\Eloquent\Builder;
@@ -470,16 +471,18 @@ class MyTaskController extends Controller
     private function applyTargetScope(Builder $query, User $user): void
     {
         $query->whereHas('assignmentTargets', function (Builder $tq) use ($user): void {
-            $tq->where('target_type', 'all')
+            $tq->where('target_type', TaskAssignmentTarget::LEGACY_ALL)
                 ->orWhere(function (Builder $q) use ($user): void {
-                    $q->where('target_type', 'user')->where('target_id', $user->id);
+                    $q->whereIn('target_type', TaskAssignmentTarget::userTargetTypes())
+                        ->where('target_id', $user->id);
                 });
 
             $departmentIds = array_filter([$user->department_id, $user->department?->parent_id]);
 
             if ($departmentIds !== []) {
                 $tq->orWhere(function (Builder $q) use ($departmentIds): void {
-                    $q->where('target_type', 'department')->whereIn('target_id', $departmentIds);
+                    $q->whereIn('target_type', TaskAssignmentTarget::departmentTargetTypes())
+                        ->whereIn('target_id', $departmentIds);
                 });
             }
         });

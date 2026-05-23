@@ -38,7 +38,12 @@ class AppServiceProvider extends ServiceProvider
     {
         Relation::enforceMorphMap([
             'user' => User::class,
-            'department' => Department::class,        ]);        Gate::policy(Department::class, DepartmentPolicy::class);
+            'department' => Department::class,
+            // Legacy compatibility for historical invalid rows before cleanup runs.
+            'all' => User::class,
+        ]);
+
+        Gate::policy(Department::class, DepartmentPolicy::class);
         Gate::policy(TaskCategory::class, TaskCategoryPolicy::class);
         Gate::policy(Task::class, TaskPolicy::class);
         Gate::policy(User::class, UserPolicy::class);
@@ -51,4 +56,3 @@ class AppServiceProvider extends ServiceProvider
         });
     }
 }
-

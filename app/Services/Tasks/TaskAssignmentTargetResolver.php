@@ -46,14 +46,22 @@ class TaskAssignmentTargetResolver
         $task->assignmentTargets()->delete();
 
         if ($isAll) {
-            TaskAssignmentTarget::query()->create([
-                'task_id' => $task->id,
-                'target_type' => 'all',
-                'target_id' => 0,
-                'assigned_by' => $actor?->id,
-            ]);
+            $allUserIds = $this->resolveAllEligibleUsers()
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->values()
+                ->all();
 
-            return ['department_ids' => [], 'user_ids' => [], 'all' => true];
+            foreach ($allUserIds as $userId) {
+                TaskAssignmentTarget::query()->create([
+                    'task_id' => $task->id,
+                    'target_type' => User::class,
+                    'target_id' => $userId,
+                    'assigned_by' => $actor?->id,
+                ]);
+            }
+
+            return ['department_ids' => [], 'user_ids' => $allUserIds, 'all' => true];
         }
 
         $normalizedTargets = $this->normalizeTargetBuckets($targets);
@@ -123,7 +131,7 @@ class TaskAssignmentTargetResolver
     {
         $targets = $task->assignmentTargets()->get(['target_type', 'target_id']);
 
-        $hasAll = $targets->contains('target_type', 'all');
+        $hasAll = $this->targetsRepresentAllUsers($targets);
 
         if ($hasAll) {
             return [
@@ -137,7 +145,7 @@ class TaskAssignmentTargetResolver
         $departmentIds = $this->extractDepartmentIdsFromStoredTargets($targets);
         $split = $this->splitDepartmentIds($departmentIds);
         $userIds = $targets
-            ->where('target_type', 'user')
+            ->filter(fn (TaskAssignmentTarget $target): bool => $target->isUserTarget())
             ->pluck('target_id')
             ->map(fn ($id) => (int) $id)
             ->values()
@@ -232,7 +240,7 @@ class TaskAssignmentTargetResolver
     {
         $targets = $task->assignmentTargets()->get(['target_type', 'target_id']);
 
-        if ($targets->contains('target_type', 'all')) {
+        if ($targets->contains(fn (TaskAssignmentTarget $target): bool => $target->isLegacyAllTarget())) {
             return $this->resolveAllEligibleUsers();
         }
 
@@ -243,7 +251,7 @@ class TaskAssignmentTargetResolver
             'departments' => $split['departments'],
             'units' => $split['units'],
             'users' => $targets
-                ->where('target_type', 'user')
+                ->filter(fn (TaskAssignmentTarget $target): bool => $target->isUserTarget())
                 ->pluck('target_id')
                 ->map(fn ($id) => (int) $id)
                 ->values()
@@ -343,7 +351,7 @@ class TaskAssignmentTargetResolver
     private function extractDepartmentIdsFromStoredTargets(Collection $targets): array
     {
         $candidateDepartmentIds = $targets
-            ->where('target_type', 'department')
+            ->filter(fn (TaskAssignmentTarget $target): bool => $target->isDepartmentTarget())
             ->pluck('target_id')
             ->map(fn ($id) => (int) $id)
             ->values()
@@ -373,5 +381,42 @@ class TaskAssignmentTargetResolver
             ->unique()
             ->values()
             ->all();
+    }
+
+    /**
+     * @param  Collection<int, TaskAssignmentTarget>  $targets
+     */
+    private function targetsRepresentAllUsers(Collection $targets): bool
+    {
+        if ($targets->contains(fn (TaskAssignmentTarget $target): bool => $target->isLegacyAllTarget())) {
+            return true;
+        }
+
+        $departmentIds = $this->extractDepartmentIdsFromStoredTargets($targets);
+
+        if ($departmentIds !== []) {
+            return false;
+        }
+
+        $userIds = $targets
+            ->filter(fn (TaskAssignmentTarget $target): bool => $target->isUserTarget())
+            ->pluck('target_id')
+            ->map(fn ($id) => (int) $id)
+            ->sort()
+            ->values()
+            ->all();
+
+        if ($userIds === []) {
+            return false;
+        }
+
+        $allEligibleUserIds = $this->resolveAllEligibleUsers()
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->sort()
+            ->values()
+            ->all();
+
+        return $allEligibleUserIds !== [] && $userIds === $allEligibleUserIds;
     }
 }

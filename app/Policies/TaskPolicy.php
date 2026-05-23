@@ -3,6 +3,7 @@
 namespace App\Policies;
 
 use App\Models\Task;
+use App\Models\TaskAssignmentTarget;
 use App\Models\User;
 use App\Support\Rbac;
 use Illuminate\Database\Eloquent\Builder;
@@ -120,16 +121,18 @@ class TaskPolicy
 
         return $task->assignmentTargets()
             ->where(function (Builder $query) use ($user): void {
-                $query->where('target_type', 'all')
+                $query->where('target_type', TaskAssignmentTarget::LEGACY_ALL)
                     ->orWhere(function (Builder $q) use ($user): void {
-                        $q->where('target_type', 'user')->where('target_id', $user->id);
+                        $q->whereIn('target_type', TaskAssignmentTarget::userTargetTypes())
+                            ->where('target_id', $user->id);
                     });
 
                 $departmentIds = array_filter([$user->department_id, $user->department?->parent_id]);
 
                 if ($departmentIds !== []) {
                     $query->orWhere(function (Builder $q) use ($departmentIds): void {
-                        $q->where('target_type', 'department')->whereIn('target_id', $departmentIds);
+                        $q->whereIn('target_type', TaskAssignmentTarget::departmentTargetTypes())
+                            ->whereIn('target_id', $departmentIds);
                     });
                 }
             })
