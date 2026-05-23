@@ -47,4 +47,9 @@ class MobileNotification extends Model
     {
         return $this->hasMany(MobileNotificationRecipient::class);
     }
+
+    public function attachments(): HasMany
+    {
+        return $this->hasMany(MobileNotificationAttachment::class);
+    }
 }

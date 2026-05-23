@@ -35,6 +35,7 @@ class SendMobileNotificationJob implements ShouldQueue
             $users = $mobileNotificationAudienceResolver->resolveUsersForNotification($mobileNotification);
             $targetedUsersWithDevicesCount = 0;
             $targetedDevicesCount = 0;
+            $deliveredDevicesCountTotal = 0;
 
             $mobileNotification->recipients()->delete();
 
@@ -54,10 +55,16 @@ class SendMobileNotificationJob implements ShouldQueue
                         data: [
                             'type' => 'manual_broadcast',
                             'mobile_notification_id' => (string) $mobileNotification->id,
+                            'notification_id' => (string) $mobileNotification->id,
+                            'route' => '/notifications/'.(string) $mobileNotification->id,
+                            'has_attachments' => $mobileNotification->attachments()->exists() ? '1' : '0',
                         ],
                     );
-                    $status = MobileNotificationRecipientStatus::SENT;
-                    $sentAt = now();
+                    $deliveredDevicesCountTotal += $deliveredDevicesCount;
+                    $status = $deliveredDevicesCount > 0
+                        ? MobileNotificationRecipientStatus::SENT
+                        : MobileNotificationRecipientStatus::FAILED;
+                    $sentAt = $deliveredDevicesCount > 0 ? now() : null;
                 }
 
                 $mobileNotification->recipients()->create([
@@ -69,11 +76,18 @@ class SendMobileNotificationJob implements ShouldQueue
                 ]);
             }
 
-            $mobileNotificationService->markAsSent($mobileNotification, [
-                'targeted_users_count' => $users->count(),
-                'targeted_users_with_devices_count' => $targetedUsersWithDevicesCount,
-                'targeted_devices_count' => $targetedDevicesCount,
-            ]);
+            if ($targetedDevicesCount > 0 && $deliveredDevicesCountTotal === 0) {
+                $mobileNotificationService->markAsFailed(
+                    $mobileNotification,
+                    'FCM rejected all targeted device tokens or delivery failed for every device.',
+                );
+            } else {
+                $mobileNotificationService->markAsSent($mobileNotification, [
+                    'targeted_users_count' => $users->count(),
+                    'targeted_users_with_devices_count' => $targetedUsersWithDevicesCount,
+                    'targeted_devices_count' => $targetedDevicesCount,
+                ]);
+            }
         } catch (\Throwable $throwable) {
             $mobileNotificationService->markAsFailed($mobileNotification, $throwable->getMessage());
 

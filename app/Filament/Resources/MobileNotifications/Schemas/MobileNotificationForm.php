@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Services\Departments\DepartmentHierarchyService;
 use App\Services\Notifications\MobileNotificationAudienceResolver;
 use App\Support\Rbac;
+use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
@@ -39,6 +40,29 @@ class MobileNotificationForm
                             ->required()
                             ->rows(4)
                             ->maxLength(500)
+                            ->columnSpanFull(),
+                        FileUpload::make('attachments')
+                            ->label(__('Attachments'))
+                            ->multiple()
+                            ->storeFiles(false)
+                            ->maxSize(50 * 1024)
+                            ->maxFiles(10)
+                            ->acceptedFileTypes([
+                                'image/jpeg',
+                                'image/png',
+                                'image/webp',
+                                'image/gif',
+                                'application/pdf',
+                                'application/msword',
+                                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                                'application/vnd.ms-excel',
+                                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                                'video/mp4',
+                                'video/quicktime',
+                                'video/webm',
+                            ])
+                            ->helperText(__('Images (max 10MB), Documents (max 20MB), Videos (max 50MB). Accepted: JPG, PNG, WEBP, GIF, PDF, DOC, DOCX, XLS, XLSX, MP4, MOV, WEBM.'))
+                            ->imagePreviewHeight('120')
                             ->columnSpanFull(),
                     ]),
                 Section::make(__('Notification Audience'))

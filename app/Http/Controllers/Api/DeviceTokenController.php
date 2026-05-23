@@ -8,6 +8,7 @@ use App\Http\Requests\Api\Notifications\DestroyDeviceTokenRequest;
 use App\Http\Requests\Api\Notifications\StoreDeviceTokenRequest;
 use App\Models\DeviceToken;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Log;
 
 class DeviceTokenController extends Controller
 {
@@ -37,6 +38,13 @@ class DeviceTokenController extends Controller
             ],
         );
 
+        Log::info('[FCM] Device token registered.', [
+            'user_id' => $user->id,
+            'device_id' => $validated['device_id'],
+            'device_type' => $validated['device_type'] ?? 'android',
+            'token_length' => strlen((string) $validated['fcm_token']),
+        ]);
+
         return $this->successResponse(
             message: 'Device token registered.',
         );
@@ -61,6 +69,13 @@ class DeviceTokenController extends Controller
                 }
             })
             ->delete();
+
+        Log::info('[FCM] Device token removed.', [
+            'user_id' => $request->user()->id,
+            'device_id' => $validated['device_id'] ?? null,
+            'has_fcm_token' => ! empty($validated['fcm_token']),
+            'deleted_count' => $deleted,
+        ]);
 
         return $this->successResponse(
             data: ['deleted' => $deleted],

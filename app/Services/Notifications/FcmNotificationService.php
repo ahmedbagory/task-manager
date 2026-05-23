@@ -29,16 +29,32 @@ class FcmNotificationService
         $tokens = $this->tokensForUser($assignee);
 
         if (empty($tokens)) {
+            Log::info('[FCM] Task assignment skipped because the assignee has no registered devices.', [
+                'task_id' => $task->id,
+                'task_number' => $task->task_number ?? '',
+                'assignee_id' => $assignee->id,
+            ]);
             return;
         }
 
         $title = 'New Task Assigned';
         $body = "Task \"{$task->title}\" has been assigned to you.";
 
-        $this->sendTokens($tokens, $title, $body, [
+        $deliveredCount = $this->sendTokens($tokens, $title, $body, [
             'type' => 'new_task',
             'task_id' => (string) $task->id,
             'task_title' => $task->title,
+            'task_number' => $task->task_number ?? '',
+            'route' => '/tasks/' . $task->id,
+        ]);
+
+        Log::info('[FCM] Task assignment notification processed.', [
+            'task_id' => $task->id,
+            'task_number' => $task->task_number ?? '',
+            'assignee_id' => $assignee->id,
+            'token_count' => count($tokens),
+            'delivered_count' => $deliveredCount,
+            'failed_count' => count($tokens) - $deliveredCount,
         ]);
     }
 
@@ -50,6 +66,12 @@ class FcmNotificationService
         $tokens = $this->tokensForUser($recipient);
 
         if (empty($tokens)) {
+            Log::info('[FCM] Task status notification skipped because the recipient has no registered devices.', [
+                'task_id' => $task->id,
+                'task_number' => $task->task_number ?? '',
+                'recipient_id' => $recipient->id,
+                'action' => $action,
+            ]);
             return;
         }
 
@@ -64,10 +86,22 @@ class FcmNotificationService
         $title = 'Task '.ucfirst($label);
         $body = "Task \"{$task->title}\" has been {$label}.";
 
-        $this->sendTokens($tokens, $title, $body, [
+        $deliveredCount = $this->sendTokens($tokens, $title, $body, [
             'type' => 'task_update',
             'task_id' => (string) $task->id,
+            'task_number' => $task->task_number ?? '',
             'action' => $action,
+            'route' => '/tasks/' . $task->id,
+        ]);
+
+        Log::info('[FCM] Task status notification processed.', [
+            'task_id' => $task->id,
+            'task_number' => $task->task_number ?? '',
+            'recipient_id' => $recipient->id,
+            'action' => $action,
+            'token_count' => count($tokens),
+            'delivered_count' => $deliveredCount,
+            'failed_count' => count($tokens) - $deliveredCount,
         ]);
     }
 
@@ -101,13 +135,81 @@ class FcmNotificationService
             ->where('id', '!=', $actor?->id)
             ->get();
 
+        $targetedUsers = 0;
+        $totalTokens = 0;
+        $deliveredCount = 0;
+
         foreach ($dispatchers as $dispatcher) {
             $tokens = $this->tokensForUser($dispatcher);
 
             if (! empty($tokens)) {
-                $this->sendTokens($tokens, $title, $body, $data);
+                $targetedUsers++;
+                $totalTokens += count($tokens);
+                $deliveredCount += $this->sendTokens($tokens, $title, $body, $data);
             }
         }
+
+        Log::info('[FCM] Dispatcher task update notification processed.', [
+            'task_id' => $task->id,
+            'task_number' => $task->task_number ?? '',
+            'action' => $action,
+            'actor_id' => $actor?->id,
+            'targeted_users_with_devices_count' => $targetedUsers,
+            'token_count' => $totalTokens,
+            'delivered_count' => $deliveredCount,
+            'failed_count' => $totalTokens - $deliveredCount,
+        ]);
+    }
+
+    /**
+     * Send push notification to all resolved task target users.
+     *
+     * @param  array<int, int>  $resolvedUserIds
+     */
+    public function notifyTaskTargetsAssigned(Task $task, array $resolvedUserIds): void
+    {
+        $uniqueUserIds = collect($resolvedUserIds)
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($uniqueUserIds === []) {
+            return;
+        }
+
+        $users = User::query()->whereIn('id', $uniqueUserIds)->get();
+
+        $title = 'New Task Available';
+        $body = "Task \"{$task->title}\" has been assigned to you.";
+        $data = [
+            'type' => 'new_task',
+            'task_id' => (string) $task->id,
+            'task_title' => $task->title,
+            'task_number' => $task->task_number ?? '',
+        ];
+
+        $totalTokens = 0;
+        $successCount = 0;
+        $failureCount = 0;
+
+        foreach ($users as $user) {
+            $tokens = $this->tokensForUser($user);
+            $totalTokens += count($tokens);
+            $delivered = $this->sendTokens($tokens, $title, $body, $data);
+            $successCount += $delivered;
+            $failureCount += count($tokens) - $delivered;
+        }
+
+        Log::info('[FCM] Task targets notification completed.', [
+            'task_id' => $task->id,
+            'task_number' => $task->task_number ?? '',
+            'resolved_user_ids' => $uniqueUserIds,
+            'resolved_user_count' => count($uniqueUserIds),
+            'token_count' => $totalTokens,
+            'success_count' => $successCount,
+            'failure_count' => $failureCount,
+        ]);
     }
 
     /**
@@ -147,28 +249,28 @@ class FcmNotificationService
             return 0;
         }
 
-        $this->sendTokens($tokens, $title, $body, $data);
-
-        return count($tokens);
+        return $this->sendTokens($tokens, $title, $body, $data);
     }
 
     /**
      * Send a push notification via FCM HTTP v1 API.
      */
-    private function sendPush(string $token, string $title, string $body, array $data = []): void
+    private function sendPush(string $token, string $title, string $body, array $data = []): bool
     {
         $credentialsFile = $this->resolveCredentialsFile();
 
         if (! $credentialsFile || ! $this->projectId) {
             Log::warning('[FCM] Firebase credentials or project ID not configured.');
 
-            return;
+            return false;
         }
 
         try {
             $accessToken = $this->getAccessToken($credentialsFile);
 
             $response = Http::withToken($accessToken)
+                ->timeout(15)
+                ->connectTimeout(10)
                 ->post("https://fcm.googleapis.com/v1/projects/{$this->projectId}/messages:send", [
                     'message' => [
                         'token' => $token,
@@ -199,13 +301,19 @@ class FcmNotificationService
                 ]);
 
                 // Remove invalid tokens
-                if ($this->shouldForgetToken($response->status(), $response->body())) {
+                if ($this->shouldForgetToken($response->status(), $error, $response->body())) {
                     DeviceToken::where('fcm_token', $token)->delete();
                     Log::info('[FCM] Removed stale token');
                 }
+
+                return false;
             }
+
+            return true;
         } catch (\Throwable $e) {
             Log::error('[FCM] Exception sending push: '.$e->getMessage());
+
+            return false;
         }
     }
 
@@ -269,11 +377,17 @@ class FcmNotificationService
     /**
      * @param  array<int, string>  $tokens
      */
-    private function sendTokens(array $tokens, string $title, string $body, array $data = []): void
+    private function sendTokens(array $tokens, string $title, string $body, array $data = []): int
     {
+        $deliveredCount = 0;
+
         foreach ($tokens as $token) {
-            $this->sendPush($token, $title, $body, $data);
+            if ($this->sendPush($token, $title, $body, $data)) {
+                $deliveredCount++;
+            }
         }
+
+        return $deliveredCount;
     }
 
     private function resolveCredentialsFile(): ?string
@@ -312,11 +426,37 @@ class FcmNotificationService
         return $payload;
     }
 
-    private function shouldForgetToken(int $status, string $body): bool
+    /**
+     * @param  array<string, mixed>|null  $error
+     */
+    private function shouldForgetToken(int $status, ?array $error, string $body): bool
     {
+        $details = data_get($error, 'error.details', []);
+        $hasTokenFieldViolation = collect(is_array($details) ? $details : [])
+            ->contains(function ($detail): bool {
+                $violations = data_get($detail, 'fieldViolations', []);
+
+                if (! is_array($violations)) {
+                    return false;
+                }
+
+                foreach ($violations as $violation) {
+                    if (data_get($violation, 'field') === 'message.token') {
+                        return true;
+                    }
+                }
+
+                return false;
+            });
+
         return $status === 404
             || str_contains($body, 'UNREGISTERED')
-            || str_contains($body, 'registration-token-not-registered');
+            || str_contains($body, 'registration-token-not-registered')
+            || ($status === 400
+                && str_contains($body, 'INVALID_ARGUMENT')
+                && ($hasTokenFieldViolation
+                    || str_contains($body, 'message.token')
+                    || str_contains($body, 'valid FCM registration token')));
     }
 
     private function buildServiceAccountAssertion(

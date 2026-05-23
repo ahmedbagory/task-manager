@@ -7,12 +7,18 @@ use App\Models\Department;
 use App\Models\Task;
 use App\Models\TaskAssignmentTarget;
 use App\Models\User;
+use App\Services\Notifications\FcmNotificationService;
 use App\Support\Rbac;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 class TaskAssignmentTargetResolver
 {
+    public function __construct(
+        private readonly FcmNotificationService $fcmNotificationService,
+    ) {}
+
     /**
      * @param  array<string, mixed>  $data
      * @return array{departments: array<int, int>, units: array<int, int>, users: array<int, int>, all: bool}
@@ -63,6 +69,7 @@ class TaskAssignmentTargetResolver
             }
 
             $this->syncTaskDispatchState($task, $actor);
+            $this->dispatchTargetNotifications($task, $allUserIds);
 
             return ['department_ids' => [], 'user_ids' => $allUserIds, 'all' => true];
         }
@@ -90,6 +97,14 @@ class TaskAssignmentTargetResolver
         }
 
         $this->syncTaskDispatchState($task, $actor);
+
+        $resolvedUserIds = $this->resolveUsersFromTargets($normalizedTargets)
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+        $this->dispatchTargetNotifications($task, $resolvedUserIds);
 
         return [
             'department_ids' => $departmentIds,
@@ -402,6 +417,26 @@ class TaskAssignmentTargetResolver
             ->map(fn ($id) => (int) $id)
             ->values()
             ->all();
+    }
+
+    /**
+     * @param  array<int, int>  $resolvedUserIds
+     */
+    private function dispatchTargetNotifications(Task $task, array $resolvedUserIds): void
+    {
+        if ($resolvedUserIds === []) {
+            return;
+        }
+
+        $taskId = $task->id;
+
+        DB::afterCommit(function () use ($taskId, $resolvedUserIds): void {
+            $freshTask = Task::query()->find($taskId);
+
+            if ($freshTask) {
+                $this->fcmNotificationService->notifyTaskTargetsAssigned($freshTask, $resolvedUserIds);
+            }
+        });
     }
 
     /**

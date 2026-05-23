@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\DeviceTokenController;
+use App\Http\Controllers\Api\MobileNotificationController;
 use App\Http\Controllers\Api\MyTaskController;
 use App\Http\Controllers\Api\NotificationTestController;
 use Illuminate\Support\Facades\Route;
@@ -39,6 +40,12 @@ Route::prefix('mobile')->name('api.mobile.')->group(function (): void {
         Route::post('/device-token', [DeviceTokenController::class, 'store'])->name('device-token.store');
         Route::delete('/device-token', [DeviceTokenController::class, 'destroy'])->name('device-token.destroy');
         Route::post('/notifications/test', [NotificationTestController::class, 'store'])->name('notifications.test');
+
+        Route::prefix('notifications')->name('notifications.')->group(function (): void {
+            Route::get('/', [MobileNotificationController::class, 'index'])->name('index');
+            Route::get('/{notification}', [MobileNotificationController::class, 'show'])->whereNumber('notification')->name('show');
+            Route::get('/{notification}/attachments/{attachment}/download', [MobileNotificationController::class, 'downloadAttachment'])->whereNumber(['notification', 'attachment'])->name('attachments.download');
+        });
 
         Route::prefix('my-tasks')->name('my-tasks.')->group(function (): void {
             Route::get('/', [MyTaskController::class, 'index'])->name('index');

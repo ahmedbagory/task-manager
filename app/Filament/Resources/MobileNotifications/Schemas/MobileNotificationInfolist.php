@@ -3,6 +3,8 @@
 namespace App\Filament\Resources\MobileNotifications\Schemas;
 
 use App\Enums\MobileNotificationStatus;
+use App\Models\MobileNotificationAttachment;
+use Filament\Infolists\Components\ImageEntry;
 use Filament\Infolists\Components\RepeatableEntry;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Components\Section;
@@ -52,6 +54,28 @@ class MobileNotificationInfolist
                             ->label(__('Last error'))
                             ->placeholder('-')
                             ->columnSpanFull(),
+                    ]),
+                Section::make(__('Attachments'))
+                    ->visible(fn ($record): bool => $record->attachments->isNotEmpty())
+                    ->components([
+                        RepeatableEntry::make('attachments')
+                            ->label('')
+                            ->schema([
+                                TextEntry::make('original_name')
+                                    ->label(__('File')),
+                                TextEntry::make('type')
+                                    ->label(__('Type'))
+                                    ->badge(),
+                                TextEntry::make('human_size')
+                                    ->label(__('Size'))
+                                    ->getStateUsing(fn (MobileNotificationAttachment $record): string => $record->humanSize()),
+                                TextEntry::make('url')
+                                    ->label(__('URL'))
+                                    ->getStateUsing(fn (MobileNotificationAttachment $record): string => $record->url())
+                                    ->url(fn (MobileNotificationAttachment $record): string => $record->url())
+                                    ->openUrlInNewTab(),
+                            ])
+                            ->columns(4),
                     ]),
                 Section::make(__('Notification Audience'))
                     ->components([

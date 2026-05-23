@@ -15,6 +15,7 @@ class MobileNotificationRecipient extends Model
         'device_count',
         'delivered_devices_count',
         'sent_at',
+        'read_at',
     ];
 
     protected function casts(): array
@@ -22,6 +23,7 @@ class MobileNotificationRecipient extends Model
         return [
             'status' => MobileNotificationRecipientStatus::class,
             'sent_at' => 'datetime',
+            'read_at' => 'datetime',
         ];
     }
 
