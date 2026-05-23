@@ -34,6 +34,7 @@ class TaskAssignmentHistory extends Model
         return match ($this->action) {
             'assigned' => 'تعيين',
             'reassigned' => 'إعادة تعيين',
+            'targets_updated' => 'تحديث الإسناد',
             'accepted' => 'قبول',
             'rejected' => 'رفض',
             'completed' => 'إكمال',

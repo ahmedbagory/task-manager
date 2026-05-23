@@ -3,6 +3,7 @@
 namespace App\Filament\Pages;
 
 use App\Services\WhatsApp\BridgeApiClient;
+use App\Services\WhatsApp\WhatsappBridgeProcessService;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Notifications\Notification;
@@ -31,6 +32,16 @@ class WhatsAppSession extends Page
      * @var string|null
      */
     public ?string $qrDataUrl = null;
+
+    /**
+     * @var array<string, mixed>
+     */
+    public array $diagnostics = [];
+
+    /**
+     * @var string
+     */
+    public string $pm2Logs = '';
 
     public function mount(): void
     {
@@ -76,6 +87,22 @@ class WhatsAppSession extends Page
                             ->label('')
                             ->content(fn (): HtmlString => $this->renderQrCode()),
                     ]),
+                Section::make(__('Process Diagnostics'))
+                    ->description(__('PM2 process and system information.'))
+                    ->collapsed()
+                    ->components([
+                        \Filament\Forms\Components\Placeholder::make('diagnostics_display')
+                            ->label('')
+                            ->content(fn (): HtmlString => $this->renderDiagnostics()),
+                    ]),
+                Section::make(__('Bridge Logs'))
+                    ->description(__('Last log lines from the WhatsApp bridge process.'))
+                    ->collapsed()
+                    ->components([
+                        \Filament\Forms\Components\Placeholder::make('logs_display')
+                            ->label('')
+                            ->content(fn (): HtmlString => $this->renderLogs()),
+                    ]),
             ]);
     }
 
@@ -87,13 +114,135 @@ class WhatsAppSession extends Page
                 ->icon(Heroicon::OutlinedArrowPath)
                 ->color('gray')
                 ->action(fn () => $this->refreshBridgeData()),
+
+            Action::make('checkStatus')
+                ->label(__('فحص الحالة'))
+                ->icon(Heroicon::OutlinedSignal)
+                ->color('info')
+                ->action(function (): void {
+                    $service = app(WhatsappBridgeProcessService::class);
+                    $diag = $service->getDiagnostics();
+
+                    $statusText = "PM2: " . ($diag['pm2_found'] ? 'Found' : 'NOT FOUND')
+                        . "\nBridge: " . $diag['bridge_status']
+                        . "\nNode: " . $diag['node_version']
+                        . ($diag['uptime'] ? "\nUptime: " . $diag['uptime'] : '')
+                        . ($diag['memory'] ? "\nMemory: " . $diag['memory'] : '')
+                        . ($diag['pid'] ? "\nPID: " . $diag['pid'] : '')
+                        . "\nAuth: " . ($diag['auth_exists'] ? 'Exists' : 'Missing');
+
+                    Notification::make()
+                        ->title(__('Bridge Process Status'))
+                        ->body($statusText)
+                        ->color($diag['bridge_status'] === 'online' ? 'success' : 'warning')
+                        ->duration(10000)
+                        ->send();
+
+                    $this->refreshBridgeData();
+                }),
+
+            Action::make('restartBridge')
+                ->label(__('إعادة تشغيل البريدج'))
+                ->icon(Heroicon::OutlinedArrowPath)
+                ->color('warning')
+                ->requiresConfirmation()
+                ->modalHeading(__('Restart WhatsApp Bridge'))
+                ->modalDescription(__('This will restart the bridge PM2 process. The session (auth) will NOT be deleted. Messages may be briefly interrupted.'))
+                ->action(function (): void {
+                    $service = app(WhatsappBridgeProcessService::class);
+
+                    if (! $service->pm2Exists()) {
+                        Notification::make()
+                            ->danger()
+                            ->title(__('PM2 Not Found'))
+                            ->body(__('PM2 binary not found at: ') . $service->getPm2Bin())
+                            ->send();
+
+                        return;
+                    }
+
+                    $result = $service->restart();
+
+                    if ($result['success']) {
+                        Notification::make()
+                            ->success()
+                            ->title(__('Bridge Restarted'))
+                            ->body(__('WhatsApp bridge has been restarted successfully.'))
+                            ->send();
+                    } else {
+                        Notification::make()
+                            ->danger()
+                            ->title(__('Restart Failed'))
+                            ->body($result['error'] ?: __('Unknown error during restart.'))
+                            ->send();
+                    }
+
+                    sleep(3);
+                    $this->refreshBridgeData();
+                }),
+
+            Action::make('watchdogRestart')
+                ->label(__('طلب إعادة تشغيل من Watchdog'))
+                ->icon(Heroicon::OutlinedClock)
+                ->color('gray')
+                ->action(function (): void {
+                    $service = app(WhatsappBridgeProcessService::class);
+                    $service->createRestartFlag();
+
+                    Notification::make()
+                        ->success()
+                        ->title(__('Watchdog Restart Requested'))
+                        ->body(__('A restart flag has been created. The watchdog cron will pick it up on the next run (within 1 minute).'))
+                        ->send();
+                }),
+
+            Action::make('reconnectQr')
+                ->label(__('إعادة الربط / QR'))
+                ->icon(Heroicon::OutlinedQrCode)
+                ->color('info')
+                ->requiresConfirmation()
+                ->modalHeading(__('Reconnect / Show QR'))
+                ->modalDescription(__('This will restart the bridge process to trigger a new connection attempt. If not authenticated, a new QR code will appear. Auth will NOT be deleted.'))
+                ->action(function (): void {
+                    $service = app(WhatsappBridgeProcessService::class);
+
+                    if (! $service->pm2Exists()) {
+                        Notification::make()
+                            ->danger()
+                            ->title(__('PM2 Not Found'))
+                            ->body(__('PM2 binary not found at: ') . $service->getPm2Bin())
+                            ->send();
+
+                        return;
+                    }
+
+                    $result = $service->restart();
+
+                    if ($result['success']) {
+                        Notification::make()
+                            ->success()
+                            ->title(__('Bridge Restarted'))
+                            ->body(__('Bridge restarted. If a QR code is needed, click Refresh in a few seconds to see it.'))
+                            ->send();
+                    } else {
+                        Notification::make()
+                            ->danger()
+                            ->title(__('Restart Failed'))
+                            ->body($result['error'] ?: __('Could not restart bridge.'))
+                            ->send();
+                    }
+
+                    sleep(5);
+                    $this->refreshBridgeData();
+                }),
+
             Action::make('disconnect')
-                ->label(__('Disconnect & New QR'))
+                ->label(__('Reset Session'))
                 ->icon(Heroicon::OutlinedArrowRightOnRectangle)
                 ->color('danger')
                 ->requiresConfirmation()
-                ->modalHeading(__('Disconnect WhatsApp Session'))
-                ->modalDescription(__('This will log out the current WhatsApp session and generate a new QR code. You will need to scan the QR code again from WhatsApp.'))
+                ->modalHeading(__('Reset WhatsApp Session'))
+                ->modalDescription(__('WARNING: This will log out the current WhatsApp session, back up the auth folder, and generate a new QR code. You will need to scan the QR code again from WhatsApp. This cannot be undone.'))
                 ->action(function (): void {
                     $client = app(BridgeApiClient::class);
                     $result = $client->logout();
@@ -101,13 +250,13 @@ class WhatsAppSession extends Page
                     if ($result && ($result['success'] ?? false)) {
                         Notification::make()
                             ->success()
-                            ->title(__('Session disconnected'))
-                            ->body(__('A new QR code will appear shortly. Click Refresh to see it.'))
+                            ->title(__('Session Reset'))
+                            ->body(__('Session disconnected. A new QR code will appear shortly. Click Refresh to see it.'))
                             ->send();
                     } else {
                         Notification::make()
                             ->danger()
-                            ->title(__('Disconnect failed'))
+                            ->title(__('Reset Failed'))
                             ->body(__('Could not reach the bridge. Make sure it is running.'))
                             ->send();
                     }
@@ -126,6 +275,12 @@ class WhatsAppSession extends Page
 
         $qrResponse = $client->getQr();
         $this->qrDataUrl = $qrResponse['qr'] ?? null;
+
+        $service = app(WhatsappBridgeProcessService::class);
+        $this->diagnostics = $service->getDiagnostics();
+
+        $logResult = $service->getLogs(40);
+        $this->pm2Logs = $logResult['output'] ?: ($logResult['error'] ?: '');
     }
 
     private function renderSessionCard(): HtmlString
@@ -199,6 +354,56 @@ class WhatsAppSession extends Page
             . '<img src="' . e($this->qrDataUrl) . '" alt="WhatsApp QR Code" class="rounded-xl shadow-lg" style="width:320px;height:320px;" />'
             . '<p class="text-sm text-gray-500 dark:text-gray-400">' . __('QR codes expire quickly. Click Refresh if the scan fails.') . '</p>'
             . '</div>'
+        );
+    }
+
+    private function renderDiagnostics(): HtmlString
+    {
+        $d = $this->diagnostics;
+
+        if (empty($d)) {
+            return new HtmlString('<p class="text-gray-500 dark:text-gray-400">' . __('No diagnostics available. Click Refresh.') . '</p>');
+        }
+
+        $rows = [
+            [__('PM2 Found'), ($d['pm2_found'] ?? false) ? '✓ Yes' : '✗ No'],
+            [__('PM2 Binary'), e($d['pm2_bin'] ?? '-')],
+            [__('Node Version'), e($d['node_version'] ?? '-')],
+            [__('Bridge PM2 Status'), e($d['bridge_status'] ?? '-')],
+            [__('PID'), e((string) ($d['pid'] ?? '-'))],
+            [__('Restart Count'), e((string) ($d['restart_count'] ?? '-'))],
+            [__('Uptime'), e($d['uptime'] ?? '-')],
+            [__('Memory'), e($d['memory'] ?? '-')],
+            [__('Auth Folder'), ($d['auth_exists'] ?? false) ? '✓ Exists' : '✗ Missing'],
+        ];
+
+        $html = '<div class="overflow-x-auto"><table class="w-full text-sm">';
+        $html .= '<tbody class="divide-y divide-gray-200 dark:divide-white/10">';
+
+        foreach ($rows as [$label, $value]) {
+            $html .= '<tr>'
+                . '<td class="py-2 pe-4 font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">' . $label . '</td>'
+                . '<td class="py-2 text-gray-600 dark:text-gray-400 font-mono text-xs">' . $value . '</td>'
+                . '</tr>';
+        }
+
+        $html .= '</tbody></table></div>';
+
+        return new HtmlString($html);
+    }
+
+    private function renderLogs(): HtmlString
+    {
+        if (! $this->pm2Logs) {
+            return new HtmlString('<p class="text-gray-500 dark:text-gray-400">' . __('No logs available. The bridge may not be running.') . '</p>');
+        }
+
+        $escaped = e($this->pm2Logs);
+
+        return new HtmlString(
+            '<pre class="bg-gray-900 text-green-400 p-4 rounded-lg text-xs overflow-x-auto max-h-96 overflow-y-auto font-mono whitespace-pre-wrap">'
+            . $escaped
+            . '</pre>'
         );
     }
 }

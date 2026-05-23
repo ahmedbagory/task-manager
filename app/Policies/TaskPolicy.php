@@ -5,6 +5,7 @@ namespace App\Policies;
 use App\Models\Task;
 use App\Models\User;
 use App\Support\Rbac;
+use Illuminate\Database\Eloquent\Builder;
 
 class TaskPolicy
 {
@@ -86,8 +87,12 @@ class TaskPolicy
 
     public function viewAssignedWorkspace(User $user, Task $task): bool
     {
-        return $user->can('tasks.view')
-            && $task->assigned_to_user_id === $user->id;
+        if (! $user->can('tasks.view')) {
+            return false;
+        }
+
+        return $task->assigned_to_user_id === $user->id
+            || $this->isTargetedUser($user, $task);
     }
 
     public function respondToAssignment(User $user, Task $task): bool
@@ -105,6 +110,30 @@ class TaskPolicy
     {
         return $user->can('tasks.attachments.view')
             && $this->viewAssignedWorkspace($user, $task);
+    }
+
+    private function isTargetedUser(User $user, Task $task): bool
+    {
+        if (! $task->assignmentTargets()->exists()) {
+            return false;
+        }
+
+        return $task->assignmentTargets()
+            ->where(function (Builder $query) use ($user): void {
+                $query->where('target_type', 'all')
+                    ->orWhere(function (Builder $q) use ($user): void {
+                        $q->where('target_type', 'user')->where('target_id', $user->id);
+                    });
+
+                $departmentIds = array_filter([$user->department_id, $user->department?->parent_id]);
+
+                if ($departmentIds !== []) {
+                    $query->orWhere(function (Builder $q) use ($departmentIds): void {
+                        $q->where('target_type', 'department')->whereIn('target_id', $departmentIds);
+                    });
+                }
+            })
+            ->exists();
     }
 
     public function viewAssignments(User $user, Task $task): bool

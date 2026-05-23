@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\TaskAssignmentStatus;
+use App\Enums\TaskStatus;
 use App\Http\Controllers\Api\Concerns\RespondsWithJson;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\MyTasks\IndexMyTasksRequest;
@@ -15,11 +17,14 @@ use App\Http\Resources\Api\TaskDetailResource;
 use App\Http\Resources\Api\TaskListResource;
 use App\Models\Task;
 use App\Models\TaskAssignment;
+use App\Models\TaskAssignmentHistory;
 use App\Models\User;
 use App\Services\Tasks\TaskAssignmentService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -41,13 +46,23 @@ class MyTaskController extends Controller
         $perPage = (int) ($validated['per_page'] ?? 15);
 
         $tasksQuery = Task::query()
-            ->where('assigned_to_user_id', $user->id)
+            ->where(function (Builder $query) use ($user): void {
+                $query->where('assigned_to_user_id', $user->id)
+                    ->orWhere(function (Builder $q) use ($user): void {
+                        $q->whereIn('status', [
+                            TaskStatus::NEW->value,
+                            TaskStatus::PENDING_ASSIGNMENT->value,
+                        ]);
+                        $this->applyTargetScope($q, $user);
+                    });
+            })
             ->with([
                 'department.parent',
                 'category',
                 'latestAssignment.assignedByUser',
                 'reportedByUser',
                 'createdByUser',
+                'assignmentTargets',
             ])
             ->withCount('comments')
             ->orderByDesc('updated_at');
@@ -70,7 +85,7 @@ class MyTaskController extends Controller
     {
         /** @var User $user */
         $user = $request->user();
-        $taskModel = $this->resolveAssignedTask($user, $task);
+        $taskModel = $this->resolveUserTask($user, $task);
 
         if (! $taskModel) {
             return $this->errorResponse(message: 'Task not found.', status: 404);
@@ -88,14 +103,39 @@ class MyTaskController extends Controller
 
     public function accept(Request $request, int $task, TaskAssignmentService $taskAssignmentService): JsonResponse
     {
-        return $this->handleAssignmentTransition(
-            request: $request,
-            taskId: $task,
-            ability: 'respondToAssignment',
-            handler: function (TaskAssignment $assignment, User $user) use ($taskAssignmentService): void {
-                $taskAssignmentService->acceptAssignment($assignment, $user);
-            },
-            successMessage: 'Task accepted successfully.',
+        /** @var User $user */
+        $user = $request->user();
+        $taskModel = $this->resolveUserTask($user, $task, ['department.parent', 'category']);
+
+        if (! $taskModel) {
+            return $this->errorResponse(message: 'Task not found.', status: 404);
+        }
+
+        if ($user->cannot('respondToAssignment', $taskModel)) {
+            return $this->errorResponse(message: 'Forbidden.', status: 403);
+        }
+
+        $assignment = $this->resolveUserAssignment($taskModel, $user);
+
+        if (! $assignment) {
+            return $this->claimTargetedTask($taskModel, $user);
+        }
+
+        try {
+            $taskAssignmentService->acceptAssignment($assignment, $user);
+        } catch (ValidationException $exception) {
+            return $this->errorResponse(
+                message: 'Validation failed.',
+                status: 422,
+                errors: $exception->errors(),
+            );
+        }
+
+        $taskModel->refresh()->load($this->detailRelations());
+
+        return $this->successResponse(
+            data: ['task' => (new TaskDetailResource($taskModel))->resolve()],
+            message: 'Task accepted successfully.',
         );
     }
 
@@ -202,7 +242,7 @@ class MyTaskController extends Controller
     {
         /** @var User $user */
         $user = $request->user();
-        $taskModel = $this->resolveAssignedTask($user, $task);
+        $taskModel = $this->resolveUserTask($user, $task);
 
         if (! $taskModel) {
             return $this->errorResponse(message: 'Task not found.', status: 404);
@@ -230,7 +270,7 @@ class MyTaskController extends Controller
     {
         /** @var User $user */
         $user = $request->user();
-        $taskModel = $this->resolveAssignedTask($user, $task);
+        $taskModel = $this->resolveUserTask($user, $task);
 
         if (! $taskModel) {
             return $this->errorResponse(message: 'Task not found.', status: 404);
@@ -265,7 +305,7 @@ class MyTaskController extends Controller
     {
         /** @var User $user */
         $user = $request->user();
-        $taskModel = $this->resolveAssignedTask($user, $task);
+        $taskModel = $this->resolveUserTask($user, $task);
 
         if (! $taskModel) {
             return $this->errorResponse(message: 'Task not found.', status: 404);
@@ -301,7 +341,7 @@ class MyTaskController extends Controller
     ): JsonResponse {
         /** @var User $user */
         $user = $request->user();
-        $task = $this->resolveAssignedTask($user, $taskId, ['department.parent', 'category']);
+        $task = $this->resolveUserTask($user, $taskId, ['department.parent', 'category']);
 
         if (! $task) {
             return $this->errorResponse(message: 'Task not found.', status: 404);
@@ -331,7 +371,126 @@ class MyTaskController extends Controller
             );
         }
 
-        $task->refresh()->load([
+        $task->refresh()->load($this->detailRelations());
+
+        return $this->successResponse(
+            data: ['task' => (new TaskDetailResource($task))->resolve()],
+            message: $successMessage,
+        );
+    }
+
+    /**
+     * @param  array<int, string>  $with
+     */
+    private function resolveUserTask(User $user, int $taskId, array $with = []): ?Task
+    {
+        return Task::query()
+            ->whereKey($taskId)
+            ->where(function (Builder $query) use ($user): void {
+                $query->where('assigned_to_user_id', $user->id)
+                    ->orWhere(function (Builder $q) use ($user): void {
+                        $this->applyTargetScope($q, $user);
+                    });
+            })
+            ->with(array_merge($this->detailRelations(), $with))
+            ->first();
+    }
+
+    private function resolveUserAssignment(Task $task, User $user): ?TaskAssignment
+    {
+        return $task->assignments()
+            ->where('assigned_to_user_id', $user->id)
+            ->whereIn('status', [TaskAssignmentStatus::ASSIGNED->value, TaskAssignmentStatus::ACCEPTED->value])
+            ->orderByDesc('id')
+            ->first();
+    }
+
+    private function claimTargetedTask(Task $task, User $user): JsonResponse
+    {
+        try {
+            DB::transaction(function () use ($task, $user): void {
+                $lockedTask = Task::query()->lockForUpdate()->findOrFail($task->id);
+
+                if (in_array($lockedTask->status->value, [
+                    TaskStatus::COMPLETED->value,
+                    TaskStatus::CANCELLED->value,
+                ], true)) {
+                    throw ValidationException::withMessages([
+                        'task' => ['Task is already completed or cancelled.'],
+                    ]);
+                }
+
+                $activeExists = $lockedTask->assignments()
+                    ->whereIn('status', [TaskAssignmentStatus::ASSIGNED->value, TaskAssignmentStatus::ACCEPTED->value])
+                    ->exists();
+
+                if ($activeExists) {
+                    throw ValidationException::withMessages([
+                        'task' => ['Task already has an active assignment.'],
+                    ]);
+                }
+
+                $lockedTask->assignments()->create([
+                    'assigned_to_user_id' => $user->id,
+                    'assigned_by_user_id' => $user->id,
+                    'status' => TaskAssignmentStatus::ACCEPTED->value,
+                    'assigned_at' => now(),
+                    'accepted_at' => now(),
+                ]);
+
+                $lockedTask->forceFill([
+                    'assigned_to_user_id' => $user->id,
+                    'status' => TaskStatus::ACCEPTED->value,
+                    'updated_by' => $user->id,
+                ])->save();
+
+                TaskAssignmentHistory::query()->create([
+                    'task_id' => $lockedTask->id,
+                    'action' => 'accepted',
+                    'to_user_id' => $user->id,
+                    'performed_by' => $user->id,
+                ]);
+            });
+        } catch (ValidationException $exception) {
+            return $this->errorResponse(
+                message: 'Validation failed.',
+                status: 422,
+                errors: $exception->errors(),
+            );
+        }
+
+        $task->refresh()->load($this->detailRelations());
+
+        return $this->successResponse(
+            data: ['task' => (new TaskDetailResource($task))->resolve()],
+            message: 'Task accepted successfully.',
+        );
+    }
+
+    private function applyTargetScope(Builder $query, User $user): void
+    {
+        $query->whereHas('assignmentTargets', function (Builder $tq) use ($user): void {
+            $tq->where('target_type', 'all')
+                ->orWhere(function (Builder $q) use ($user): void {
+                    $q->where('target_type', 'user')->where('target_id', $user->id);
+                });
+
+            $departmentIds = array_filter([$user->department_id, $user->department?->parent_id]);
+
+            if ($departmentIds !== []) {
+                $tq->orWhere(function (Builder $q) use ($departmentIds): void {
+                    $q->where('target_type', 'department')->whereIn('target_id', $departmentIds);
+                });
+            }
+        });
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function detailRelations(): array
+    {
+        return [
             'department',
             'department.parent',
             'category',
@@ -343,44 +502,8 @@ class MyTaskController extends Controller
             'assignments.assignedToUser',
             'comments.user',
             'attachments.user',
-        ]);
-
-        return $this->successResponse(
-            data: ['task' => (new TaskDetailResource($task))->resolve()],
-            message: $successMessage,
-        );
-    }
-
-    /**
-     * @param  array<int, string>  $with
-     */
-    private function resolveAssignedTask(User $user, int $taskId, array $with = []): ?Task
-    {
-        return Task::query()
-            ->whereKey($taskId)
-            ->where('assigned_to_user_id', $user->id)
-            ->with(array_merge([
-                'department',
-                'department.parent',
-                'category',
-                'assignedToUser',
-                'latestAssignment.assignedByUser',
-                'reportedByUser',
-                'createdByUser',
-                'assignments.assignedByUser',
-                'assignments.assignedToUser',
-                'comments.user',
-                'attachments.user',
-            ], $with))
-            ->first();
-    }
-
-    private function resolveUserAssignment(Task $task, User $user): ?TaskAssignment
-    {
-        return $task->assignments()
-            ->where('assigned_to_user_id', $user->id)
-            ->orderByDesc('id')
-            ->first();
+            'assignmentTargets',
+        ];
     }
 
     /**

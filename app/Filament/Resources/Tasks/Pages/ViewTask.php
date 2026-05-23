@@ -2,10 +2,12 @@
 
 namespace App\Filament\Resources\Tasks\Pages;
 
+use App\Enums\TaskAssignmentStatus;
 use App\Enums\TaskStatus;
 use App\Filament\Resources\Tasks\TaskResource;
 use App\Models\Task;
 use App\Models\TaskAssignment;
+use App\Models\TaskAssignmentHistory;
 use App\Models\TaskAttachment;
 use App\Models\User;
 use App\Services\Departments\DepartmentHierarchyService;
@@ -21,6 +23,8 @@ use Filament\Forms\Components\Toggle;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ViewRecord;
 use Filament\Schemas\Components\Utilities\Get;
+use Filament\Schemas\Components\Utilities\Set;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 
@@ -40,8 +44,7 @@ class ViewTask extends ViewRecord
     protected function getHeaderActions(): array
     {
         return [
-            $this->getAssignEmployeeAction(),
-            $this->getAssignTargetsAction(),
+            $this->getAssignAction(),
             $this->getReassignAction(),
             EditAction::make(),
         ];
@@ -126,17 +129,7 @@ class ViewTask extends ViewRecord
             ->contains(fn (TaskAssignment $assignment): bool => in_array($assignment->status->value, ['assigned', 'accepted'], true));
     }
 
-    public function canShowAssignEmployeeAction(): bool
-    {
-        $task = $this->getTask();
-
-        return (auth()->user()?->can('assign', $task) ?? false)
-            && ! in_array($task->status->value, [TaskStatus::COMPLETED->value, TaskStatus::CANCELLED->value], true)
-            && $task->assigned_to_user_id === null
-            && ! $this->hasActiveAssignment();
-    }
-
-    public function canShowAssignTargetsAction(): bool
+    public function canShowAssignAction(): bool
     {
         $task = $this->getTask();
 
@@ -150,139 +143,94 @@ class ViewTask extends ViewRecord
 
         return (auth()->user()?->can('tasks.reassign') ?? false)
             && ! in_array($task->status->value, [TaskStatus::COMPLETED->value, TaskStatus::CANCELLED->value], true)
-            && $task->assigned_to_user_id !== null
-            && $this->hasActiveAssignment();
+            && ($task->assigned_to_user_id !== null || $task->assignmentTargets->isNotEmpty());
     }
 
-    protected function getAssignEmployeeAction(): Action
+    protected function getAssignAction(): Action
     {
-        return Action::make('assignEmployee')
+        return Action::make('assign')
             ->label(__('تعيين'))
             ->icon('heroicon-o-user-plus')
             ->color('primary')
-            ->visible(fn (): bool => $this->canShowAssignEmployeeAction())
-            ->form([
-                Select::make('assigned_to_user_id')
-                    ->label(__('الموظف'))
-                    ->options(fn (): array => app(TaskAssignmentTargetResolver::class)->assignmentOptionsForTask($this->getTask()))
-                    ->required()
-                    ->searchable()
-                    ->preload(),
-                Textarea::make('note')
-                    ->label(__('ملاحظة'))
-                    ->rows(3)
-                    ->maxLength(1000),
-            ])
-            ->action(function (array $data, TaskAssignmentService $taskAssignmentService): void {
-                /** @var User $assignedBy */
-                $assignedBy = auth()->user();
-
-                $taskAssignmentService->assignTask(
-                    task: $this->getTask(),
-                    assignedToUserId: (int) $data['assigned_to_user_id'],
-                    assignedBy: $assignedBy,
-                    note: $data['note'] ?? null,
-                );
-
-                $this->refreshTaskRecord();
-
-                Notification::make()
-                    ->title(__('تم تعيين المهمة بنجاح'))
-                    ->success()
-                    ->send();
-            })
-            ->modalHeading(__('تعيين موظف'))
-            ->modalSubmitActionLabel(__('تعيين'))
-            ->modalWidth('lg');
-    }
-
-    protected function getAssignTargetsAction(): Action
-    {
-        return Action::make('assignTargets')
-            ->label(__('توجيه'))
-            ->icon('heroicon-o-paper-airplane')
-            ->color('warning')
-            ->visible(fn (): bool => $this->canShowAssignTargetsAction())
-            ->form([
-                Select::make('assignment_target_departments')
-                    ->label(__('الأقسام الرئيسية'))
-                    ->options(fn (): array => app(DepartmentHierarchyService::class)->topLevelOptions())
-                    ->multiple()
-                    ->searchable()
-                    ->preload()
-                    ->live(),
-                Select::make('assignment_target_units')
-                    ->label(__('الوحدات / الفروع'))
-                    ->options(fn (Get $get): array => app(DepartmentHierarchyService::class)->childOptionsGroupedByParent(
-                        parentIds: (array) ($get('assignment_target_departments') ?? []),
-                    ))
-                    ->multiple()
-                    ->searchable()
-                    ->preload(),
-                Select::make('assignment_target_users')
-                    ->label(__('موظفون محددون'))
-                    ->options(fn (): array => app(TaskAssignmentTargetResolver::class)->assignmentOptionsForTask())
-                    ->multiple()
-                    ->searchable()
-                    ->preload(),
-            ])
+            ->visible(fn (): bool => $this->canShowAssignAction())
+            ->form($this->buildAssignFormFields())
             ->fillForm(fn (): array => app(TaskAssignmentTargetResolver::class)->fillFormTargets($this->getTask()))
-            ->action(function (array $data, TaskAssignmentTargetResolver $resolver): void {
+            ->action(function (array $data): void {
                 /** @var User $actor */
                 $actor = auth()->user();
 
-                $resolver->syncTargets($this->getTask(), [
+                app(TaskAssignmentTargetResolver::class)->syncTargets($this->getTask(), [
+                    'all' => ! empty($data['assign_to_all']),
                     'departments' => array_map('intval', (array) ($data['assignment_target_departments'] ?? [])),
                     'units' => array_map('intval', (array) ($data['assignment_target_units'] ?? [])),
                     'users' => array_map('intval', (array) ($data['assignment_target_users'] ?? [])),
                 ], $actor);
 
+                TaskAssignmentHistory::query()->create([
+                    'task_id' => $this->getTask()->id,
+                    'action' => 'targets_updated',
+                    'performed_by' => $actor->id,
+                    'note' => $data['note'] ?? null,
+                ]);
+
                 $this->refreshTaskRecord();
 
+                $count = $this->getResolvedTargetUsers()->count();
+
                 Notification::make()
-                    ->title(__('تم تحديث التوجيه بنجاح'))
-                    ->body(__('عدد الموظفين المطابقين: :count', ['count' => $this->getResolvedTargetUsers()->count()]))
+                    ->title(__('تم تحديث الإسناد بنجاح'))
+                    ->body(__('عدد الموظفين المستهدفين: :count', ['count' => $count]))
                     ->success()
                     ->send();
             })
-            ->modalHeading(__('توجيه المهمة'))
-            ->modalSubmitActionLabel(__('حفظ التوجيه'))
+            ->modalHeading(__('إسناد المهمة'))
+            ->modalSubmitActionLabel(__('حفظ الإسناد'))
             ->modalWidth('lg');
     }
 
     protected function getReassignAction(): Action
     {
         return Action::make('reassign')
-            ->label(__('إعادة تعيين'))
+            ->label(__('إعادة التعيين'))
             ->icon('heroicon-o-arrow-path')
             ->color('danger')
             ->visible(fn (): bool => $this->canShowReassignAction())
-            ->form([
-                Select::make('new_user_id')
-                    ->label(__('الموظف الجديد'))
-                    ->options(fn (): array => app(TaskAssignmentTargetResolver::class)->assignmentOptionsForTask(
-                        task: $this->getTask(),
-                        excludeUserId: $this->getTask()->assigned_to_user_id,
-                    ))
-                    ->required()
-                    ->searchable()
-                    ->preload(),
-                Textarea::make('reason')
-                    ->label(__('سبب إعادة التعيين'))
-                    ->required()
-                    ->rows(3)
-                    ->maxLength(1000),
-            ])
-            ->action(function (array $data, TaskAssignmentService $taskAssignmentService): void {
+            ->requiresConfirmation()
+            ->modalHeading(__('إعادة تعيين المهمة'))
+            ->modalDescription(__('سيتم إلغاء أي تعيين نشط حالي وتحديث الإسناد الجديد.'))
+            ->form($this->buildAssignFormFields())
+            ->action(function (array $data): void {
                 /** @var User $actor */
                 $actor = auth()->user();
+                $task = $this->getTask();
+                $previousUserId = $task->assigned_to_user_id;
 
-                $taskAssignmentService->reassignTask(
-                    task: $this->getTask(),
-                    newUserId: (int) $data['new_user_id'],
-                    actor: $actor,
-                    reason: $data['reason'],
-                );
+                $task->assignments()
+                    ->whereIn('status', [TaskAssignmentStatus::ASSIGNED->value, TaskAssignmentStatus::ACCEPTED->value])
+                    ->each(function (TaskAssignment $a) {
+                        $a->forceFill(['status' => TaskAssignmentStatus::REJECTED, 'note' => __('إعادة تعيين')])->save();
+                    });
+
+                $task->forceFill([
+                    'assigned_to_user_id' => null,
+                    'status' => TaskStatus::PENDING_ASSIGNMENT->value,
+                    'updated_by' => $actor->id,
+                ])->save();
+
+                app(TaskAssignmentTargetResolver::class)->syncTargets($task, [
+                    'all' => ! empty($data['assign_to_all']),
+                    'departments' => array_map('intval', (array) ($data['assignment_target_departments'] ?? [])),
+                    'units' => array_map('intval', (array) ($data['assignment_target_units'] ?? [])),
+                    'users' => array_map('intval', (array) ($data['assignment_target_users'] ?? [])),
+                ], $actor);
+
+                TaskAssignmentHistory::query()->create([
+                    'task_id' => $task->id,
+                    'action' => 'reassigned',
+                    'from_user_id' => $previousUserId,
+                    'performed_by' => $actor->id,
+                    'note' => $data['reason'] ?? null,
+                ]);
 
                 $this->refreshTaskRecord();
 
@@ -291,11 +239,68 @@ class ViewTask extends ViewRecord
                     ->success()
                     ->send();
             })
-            ->requiresConfirmation()
-            ->modalHeading(__('إعادة تعيين المهمة'))
-            ->modalDescription(__('سيتم إنهاء التعيين النشط الحالي وإرسال المهمة للموظف الجديد.'))
             ->modalSubmitActionLabel(__('إعادة التعيين'))
             ->modalWidth('lg');
+    }
+
+    /**
+     * @return array<int, \Filament\Forms\Components\Component>
+     */
+    private function buildAssignFormFields(): array
+    {
+        return [
+            Toggle::make('assign_to_all')
+                ->label(__('إسناد للكل'))
+                ->helperText(__('عند التفعيل سيتم إسناد المهمة لجميع الموظفين.'))
+                ->live()
+                ->afterStateUpdated(function (Set $set, $state): void {
+                    if ($state) {
+                        $set('assignment_target_departments', []);
+                        $set('assignment_target_units', []);
+                        $set('assignment_target_users', []);
+                    }
+                }),
+            Select::make('assignment_target_departments')
+                ->label(__('الأقسام'))
+                ->options(fn (): array => app(DepartmentHierarchyService::class)->topLevelOptions())
+                ->multiple()
+                ->searchable()
+                ->preload()
+                ->live()
+                ->afterStateUpdated(fn (Set $set) => $set('assignment_target_units', []))
+                ->disabled(fn (Get $get): bool => (bool) $get('assign_to_all')),
+            Select::make('assignment_target_units')
+                ->label(__('الفروع'))
+                ->options(fn (Get $get): array => app(DepartmentHierarchyService::class)->childOptionsGroupedByParent(
+                    parentIds: (array) ($get('assignment_target_departments') ?? []),
+                ))
+                ->multiple()
+                ->searchable()
+                ->preload()
+                ->disabled(fn (Get $get): bool => (bool) $get('assign_to_all')),
+            Select::make('assignment_target_users')
+                ->label(__('موظفين محددين'))
+                ->options(fn (): array => User::query()
+                    ->whereHas('roles', fn (Builder $q) => $q->whereIn('name', [
+                        Rbac::EMPLOYEE,
+                        Rbac::SUPERVISOR,
+                    ]))
+                    ->with('department.parent')
+                    ->orderBy('name')
+                    ->get()
+                    ->mapWithKeys(fn (User $u) => [
+                        $u->id => $u->name . ($u->department ? ' (' . $u->department->hierarchy_name . ')' : ''),
+                    ])
+                    ->all())
+                ->multiple()
+                ->searchable()
+                ->preload()
+                ->disabled(fn (Get $get): bool => (bool) $get('assign_to_all')),
+            Textarea::make('note')
+                ->label(__('ملاحظة'))
+                ->rows(3)
+                ->maxLength(1000),
+        ];
     }
 
     public function addCommentAction(): Action

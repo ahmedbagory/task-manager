@@ -29,7 +29,53 @@ trait ParsesInboundPayload
             $value = trim(substr($value, strlen('whatsapp:')));
         }
 
-        return $value === '' ? null : $value;
+        if ($this->isGroupOrBroadcastJid($value)) {
+            return null;
+        }
+
+        $phone = preg_replace('/[@:].*$/', '', $value);
+        $phone = ltrim($phone, '+');
+        $phone = preg_replace('/\D/', '', $phone);
+
+        if (! $this->isValidPhoneNumber($phone)) {
+            return null;
+        }
+
+        return $phone;
+    }
+
+    protected function isGroupOrBroadcastJid(?string $value): bool
+    {
+        if (blank($value)) {
+            return false;
+        }
+
+        $lower = strtolower($value);
+
+        return str_ends_with($lower, '@g.us')
+            || str_ends_with($lower, '@broadcast')
+            || str_ends_with($lower, '@newsletter')
+            || $lower === 'status@broadcast'
+            || str_starts_with($lower, '120363');
+    }
+
+    protected function isValidPhoneNumber(?string $value): bool
+    {
+        if (blank($value)) {
+            return false;
+        }
+
+        $digits = preg_replace('/\D/', '', $value);
+
+        if (strlen($digits) < 8 || strlen($digits) > 15) {
+            return false;
+        }
+
+        if (str_starts_with($digits, '120363')) {
+            return false;
+        }
+
+        return true;
     }
 
     protected function parseTimestamp(mixed $value): ?CarbonImmutable

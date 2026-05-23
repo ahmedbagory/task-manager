@@ -49,9 +49,10 @@ class MobileNotificationService
             ]);
         }
 
+        $isSendToAll = ! empty($data['send_to_all']);
         $selectedTargets = $this->mobileNotificationAudienceResolver->selectedTargets($data);
 
-        return DB::transaction(function () use ($creator, $data, $selectedTargets): MobileNotification {
+        return DB::transaction(function () use ($creator, $data, $selectedTargets, $isSendToAll): MobileNotification {
             $mobileNotification = MobileNotification::query()->create([
                 'title' => (string) $data['title'],
                 'body' => (string) $data['body'],
@@ -60,18 +61,25 @@ class MobileNotificationService
                 'queued_at' => now(),
             ]);
 
-            foreach ($selectedTargets['department_ids'] as $departmentId) {
+            if ($isSendToAll) {
                 $mobileNotification->targets()->create([
-                    'target_type' => 'department',
-                    'target_id' => $departmentId,
+                    'target_type' => 'all',
+                    'target_id' => 0,
                 ]);
-            }
+            } else {
+                foreach ($selectedTargets['department_ids'] as $departmentId) {
+                    $mobileNotification->targets()->create([
+                        'target_type' => 'department',
+                        'target_id' => $departmentId,
+                    ]);
+                }
 
-            foreach ($selectedTargets['user_ids'] as $userId) {
-                $mobileNotification->targets()->create([
-                    'target_type' => 'user',
-                    'target_id' => $userId,
-                ]);
+                foreach ($selectedTargets['user_ids'] as $userId) {
+                    $mobileNotification->targets()->create([
+                        'target_type' => 'user',
+                        'target_id' => $userId,
+                    ]);
+                }
             }
 
             DB::afterCommit(fn () => SendMobileNotificationJob::dispatch($mobileNotification->id));

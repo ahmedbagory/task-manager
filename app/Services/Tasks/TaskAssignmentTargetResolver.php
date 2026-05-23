@@ -14,13 +14,16 @@ class TaskAssignmentTargetResolver
 {
     /**
      * @param  array<string, mixed>  $data
-     * @return array{departments: array<int, int>, units: array<int, int>, users: array<int, int>}
+     * @return array{departments: array<int, int>, units: array<int, int>, users: array<int, int>, all: bool}
      */
     public function extractTargets(array &$data): array
     {
+        $isAll = ! empty($data['assign_to_all']);
         $targets = $this->normalizeTargetBuckets($data);
+        $targets['all'] = $isAll;
 
         unset(
+            $data['assign_to_all'],
             $data['assignment_target_departments'],
             $data['assignment_target_units'],
             $data['assignment_target_users'],
@@ -33,16 +36,29 @@ class TaskAssignmentTargetResolver
     }
 
     /**
-     * @param  array{departments: array<int, int>, units: array<int, int>, users: array<int, int>}  $targets
-     * @return array{department_ids: array<int, int>, user_ids: array<int, int>}
+     * @param  array{departments?: array<int, int>, units?: array<int, int>, users?: array<int, int>, all?: bool}  $targets
+     * @return array{department_ids: array<int, int>, user_ids: array<int, int>, all: bool}
      */
     public function syncTargets(Task $task, array $targets, ?User $actor = null): array
     {
+        $isAll = ! empty($targets['all']) || ! empty($targets['assign_to_all']);
+
+        $task->assignmentTargets()->delete();
+
+        if ($isAll) {
+            TaskAssignmentTarget::query()->create([
+                'task_id' => $task->id,
+                'target_type' => 'all',
+                'target_id' => 0,
+                'assigned_by' => $actor?->id,
+            ]);
+
+            return ['department_ids' => [], 'user_ids' => [], 'all' => true];
+        }
+
         $normalizedTargets = $this->normalizeTargetBuckets($targets);
         $departmentIds = $this->normalizeIds(array_merge($normalizedTargets['departments'], $normalizedTargets['units']));
         $userIds = $this->normalizeIds($normalizedTargets['users']);
-
-        $task->assignmentTargets()->delete();
 
         foreach ($departmentIds as $departmentId) {
             TaskAssignmentTarget::query()->create([
@@ -65,6 +81,7 @@ class TaskAssignmentTargetResolver
         return [
             'department_ids' => $departmentIds,
             'user_ids' => $userIds,
+            'all' => false,
         ];
     }
 
@@ -96,6 +113,7 @@ class TaskAssignmentTargetResolver
 
     /**
      * @return array{
+     *     assign_to_all: bool,
      *     assignment_target_departments: array<int, int>,
      *     assignment_target_units: array<int, int>,
      *     assignment_target_users: array<int, int>
@@ -104,6 +122,18 @@ class TaskAssignmentTargetResolver
     public function fillFormTargets(Task $task): array
     {
         $targets = $task->assignmentTargets()->get(['target_type', 'target_id']);
+
+        $hasAll = $targets->contains('target_type', 'all');
+
+        if ($hasAll) {
+            return [
+                'assign_to_all' => true,
+                'assignment_target_departments' => [],
+                'assignment_target_units' => [],
+                'assignment_target_users' => [],
+            ];
+        }
+
         $departmentIds = $this->extractDepartmentIdsFromStoredTargets($targets);
         $split = $this->splitDepartmentIds($departmentIds);
         $userIds = $targets
@@ -114,6 +144,7 @@ class TaskAssignmentTargetResolver
             ->all();
 
         return [
+            'assign_to_all' => false,
             'assignment_target_departments' => $split['departments'],
             'assignment_target_units' => $split['units'],
             'assignment_target_users' => $userIds,
@@ -121,11 +152,15 @@ class TaskAssignmentTargetResolver
     }
 
     /**
-     * @param  array{departments?: array<int, int|string>, units?: array<int, int|string>, users?: array<int, int|string>}  $targets
+     * @param  array{departments?: array<int, int|string>, units?: array<int, int|string>, users?: array<int, int|string>, all?: bool}  $targets
      * @return Collection<int, User>
      */
     public function resolveUsersFromTargets(array $targets): Collection
     {
+        if (! empty($targets['all']) || ! empty($targets['assign_to_all'])) {
+            return $this->resolveAllEligibleUsers();
+        }
+
         $normalizedTargets = $this->normalizeTargetBuckets($targets);
         $targetedDepartmentIds = $this->resolveDepartmentAudienceIds(
             topLevelIds: $normalizedTargets['departments'],
@@ -178,9 +213,29 @@ class TaskAssignmentTargetResolver
     /**
      * @return Collection<int, User>
      */
+    public function resolveAllEligibleUsers(): Collection
+    {
+        return User::query()
+            ->whereHas('roles', fn (Builder $query) => $query->whereIn('name', [
+                Rbac::EMPLOYEE,
+                Rbac::SUPERVISOR,
+            ]))
+            ->with(['department.parent'])
+            ->orderBy('name')
+            ->get();
+    }
+
+    /**
+     * @return Collection<int, User>
+     */
     public function resolveUsersForTask(Task $task): Collection
     {
         $targets = $task->assignmentTargets()->get(['target_type', 'target_id']);
+
+        if ($targets->contains('target_type', 'all')) {
+            return $this->resolveAllEligibleUsers();
+        }
+
         $departmentIds = $this->extractDepartmentIdsFromStoredTargets($targets);
         $split = $this->splitDepartmentIds($departmentIds);
 

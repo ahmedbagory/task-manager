@@ -10,6 +10,7 @@ use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
@@ -41,28 +42,42 @@ class MobileNotificationForm
                             ->columnSpanFull(),
                     ]),
                 Section::make(__('Notification Audience'))
-                    ->description(__('Choose one or more departments, units, or employees. Matching employees are deduplicated automatically.'))
+                    ->description(__('Choose one or more departments, units, or employees, or send to all.'))
                     ->columns(3)
                     ->components([
+                        Toggle::make('send_to_all')
+                            ->label(__('إرسال للكل'))
+                            ->helperText(__('عند التفعيل سيتم إرسال الإشعار لجميع الموظفين.'))
+                            ->live()
+                            ->afterStateUpdated(function (Set $set, $state): void {
+                                if ($state) {
+                                    $set('target_department_ids', []);
+                                    $set('target_unit_ids', []);
+                                    $set('target_user_ids', []);
+                                }
+                            })
+                            ->columnSpanFull(),
                         Select::make('target_department_ids')
-                            ->label(__('Top-level Departments'))
+                            ->label(__('الأقسام'))
                             ->options(fn (): array => app(DepartmentHierarchyService::class)->topLevelOptions())
                             ->multiple()
                             ->searchable()
                             ->preload()
                             ->live()
-                            ->afterStateUpdated(fn (Set $set) => $set('target_unit_ids', [])),
+                            ->afterStateUpdated(fn (Set $set) => $set('target_unit_ids', []))
+                            ->disabled(fn (Get $get): bool => (bool) $get('send_to_all')),
                         Select::make('target_unit_ids')
-                            ->label(__('Specific Units'))
+                            ->label(__('الفروع'))
                             ->options(fn (Get $get): array => app(DepartmentHierarchyService::class)->childOptionsGroupedByParent(
                                 parentIds: (array) ($get('target_department_ids') ?? []),
                             ))
                             ->multiple()
                             ->searchable()
                             ->preload()
-                            ->live(),
+                            ->live()
+                            ->disabled(fn (Get $get): bool => (bool) $get('send_to_all')),
                         Select::make('target_user_ids')
-                            ->label(__('Specific Employees'))
+                            ->label(__('موظفين محددين'))
                             ->options(fn (): array => User::query()
                                 ->whereHas('roles', fn (Builder $query) => $query->whereIn('name', [
                                     Rbac::EMPLOYEE,
@@ -78,10 +93,12 @@ class MobileNotificationForm
                             ->multiple()
                             ->searchable()
                             ->preload()
-                            ->live(),
+                            ->live()
+                            ->disabled(fn (Get $get): bool => (bool) $get('send_to_all')),
                         Placeholder::make('audience_preview')
                             ->label(__('Audience Preview'))
                             ->content(fn (Get $get): HtmlString => self::renderAudiencePreview([
+                                'send_to_all' => (bool) $get('send_to_all'),
                                 'target_department_ids' => (array) ($get('target_department_ids') ?? []),
                                 'target_unit_ids' => (array) ($get('target_unit_ids') ?? []),
                                 'target_user_ids' => (array) ($get('target_user_ids') ?? []),

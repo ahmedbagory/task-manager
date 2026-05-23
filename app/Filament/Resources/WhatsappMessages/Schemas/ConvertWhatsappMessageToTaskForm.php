@@ -12,9 +12,11 @@ use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
+use Illuminate\Database\Eloquent\Builder;
 
 class ConvertWhatsappMessageToTaskForm
 {
@@ -81,17 +83,61 @@ class ConvertWhatsappMessageToTaskForm
                         ->maxLength(255),
                     DateTimePicker::make('due_at')
                         ->label(__('Due At')),
-                    Select::make('assigned_to_user_id')
-                        ->label(__('Assign To Employee'))
-                        ->options(fn (): array => User::query()
-                            ->role([Rbac::EMPLOYEE])
-                            ->orderBy('name')
-                            ->pluck('name', 'id')
-                            ->all())
-                        ->searchable()
-                        ->preload(),
                 ])
                 ->columns(2),
+            Section::make(__('الإسناد'))
+                ->components([
+                    Toggle::make('assign_to_all')
+                        ->label(__('إسناد للكل'))
+                        ->helperText(__('عند التفعيل سيتم إسناد المهمة لجميع الموظفين.'))
+                        ->live()
+                        ->afterStateUpdated(function (Set $set, $state): void {
+                            if ($state) {
+                                $set('assignment_target_departments', []);
+                                $set('assignment_target_units', []);
+                                $set('assignment_target_users', []);
+                            }
+                        })
+                        ->columnSpanFull(),
+                    Select::make('assignment_target_departments')
+                        ->label(__('الأقسام'))
+                        ->options(fn (): array => app(DepartmentHierarchyService::class)->topLevelOptions())
+                        ->multiple()
+                        ->searchable()
+                        ->preload()
+                        ->live()
+                        ->afterStateUpdated(fn (Set $set) => $set('assignment_target_units', []))
+                        ->disabled(fn (Get $get): bool => (bool) $get('assign_to_all')),
+                    Select::make('assignment_target_units')
+                        ->label(__('الفروع'))
+                        ->options(fn (Get $get): array => app(DepartmentHierarchyService::class)->childOptionsGroupedByParent(
+                            parentIds: (array) ($get('assignment_target_departments') ?? []),
+                        ))
+                        ->multiple()
+                        ->searchable()
+                        ->preload()
+                        ->disabled(fn (Get $get): bool => (bool) $get('assign_to_all')),
+                    Select::make('assignment_target_users')
+                        ->label(__('موظفين محددين'))
+                        ->options(fn (): array => User::query()
+                            ->whereHas('roles', fn (Builder $q) => $q->whereIn('name', [
+                                Rbac::EMPLOYEE,
+                                Rbac::SUPERVISOR,
+                            ]))
+                            ->with('department.parent')
+                            ->orderBy('name')
+                            ->get()
+                            ->mapWithKeys(fn (User $u): array => [
+                                $u->id => $u->name . ($u->department ? ' (' . $u->department->hierarchy_name . ')' : ''),
+                            ])
+                            ->all())
+                        ->multiple()
+                        ->searchable()
+                        ->preload()
+                        ->disabled(fn (Get $get): bool => (bool) $get('assign_to_all')),
+                ])
+                ->columns(3)
+                ->description(__('اختر أقسام أو فروع أو موظفين محددين، أو فعّل "إسناد للكل" لإرسالها لجميع الموظفين.')),
         ];
     }
 }

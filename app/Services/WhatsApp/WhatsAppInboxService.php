@@ -9,7 +9,7 @@ use App\Models\User;
 use App\Models\WhatsappContact;
 use App\Models\WhatsappMessage;
 use App\Services\Notifications\TaskWorkflowNotificationService;
-use App\Services\Tasks\TaskAssignmentService;
+use App\Services\Tasks\TaskAssignmentTargetResolver;
 use App\Services\Tasks\TaskService;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
@@ -19,7 +19,7 @@ class WhatsAppInboxService
 {
     public function __construct(
         private readonly TaskService $taskService,
-        private readonly TaskAssignmentService $taskAssignmentService,
+        private readonly TaskAssignmentTargetResolver $taskAssignmentTargetResolver,
         private readonly TaskWorkflowNotificationService $taskWorkflowNotificationService,
     ) {}
 
@@ -46,15 +46,18 @@ class WhatsAppInboxService
                 actor: $actor,
             );
 
-            $assignedToUserId = Arr::get($data, 'assigned_to_user_id');
+            $hasTargets = ! empty($data['assign_to_all'])
+                || ! empty($data['assignment_target_departments'])
+                || ! empty($data['assignment_target_units'])
+                || ! empty($data['assignment_target_users']);
 
-            if (filled($assignedToUserId)) {
-                $this->taskAssignmentService->assignTask(
-                    task: $task,
-                    assignedToUserId: (int) $assignedToUserId,
-                    assignedBy: $actor,
-                    note: 'Assigned during WhatsApp message conversion.',
-                );
+            if ($hasTargets) {
+                $this->taskAssignmentTargetResolver->syncTargets($task, [
+                    'all' => ! empty($data['assign_to_all']),
+                    'departments' => array_map('intval', (array) ($data['assignment_target_departments'] ?? [])),
+                    'units' => array_map('intval', (array) ($data['assignment_target_units'] ?? [])),
+                    'users' => array_map('intval', (array) ($data['assignment_target_users'] ?? [])),
+                ], $actor);
             }
 
             DB::afterCommit(function () use ($lockedMessage, $task): void {

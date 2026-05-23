@@ -1,8 +1,8 @@
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '..', '.env') });
 
 const fs = require('fs');
 const http = require('http');
-const path = require('path');
 const axios = require('axios');
 const pino = require('pino');
 const qrcode = require('qrcode-terminal');
@@ -73,28 +73,49 @@ function normalizeGroupId(value) {
   return text ? text.toLowerCase() : null;
 }
 
-function normalizePhoneFromJid(jid) {
-  const raw = normalizeText(jid);
+function isGroupJid(jid) {
+  if (!jid) return false;
+  const s = String(jid);
+  return s.endsWith('@g.us') || s.startsWith('120363');
+}
 
-  if (!raw) {
-    return null;
-  }
+function isBroadcastJid(jid) {
+  if (!jid) return false;
+  const s = String(jid);
+  return s.endsWith('@broadcast') || s.endsWith('@newsletter') || s === 'status@broadcast';
+}
+
+function isValidPhone(value) {
+  if (!value) return false;
+  const digits = String(value).replace(/\D/g, '');
+  if (digits.length < 8 || digits.length > 15) return false;
+  if (digits.startsWith('120363')) return false;
+  return true;
+}
+
+function extractPhoneFromJid(jid) {
+  const raw = normalizeText(jid);
+  if (!raw) return null;
+  if (isGroupJid(raw) || isBroadcastJid(raw)) return null;
 
   const withoutDomain = raw.split('@')[0] || raw;
   const withoutDevice = withoutDomain.split(':')[0] || withoutDomain;
-  const normalized = withoutDevice.trim();
+  const cleaned = withoutDevice.trim().replace(/^\+/, '');
 
-  return normalized === '' ? null : normalized;
+  if (!isValidPhone(cleaned)) return null;
+  return cleaned;
+}
+
+function normalizePhoneFromJid(jid) {
+  return extractPhoneFromJid(jid);
 }
 
 function normalizeIncomingPhone(value) {
   const text = normalizeText(value);
-
-  if (!text) {
-    return null;
-  }
-
-  return text.replace(/^\+/, '');
+  if (!text) return null;
+  const cleaned = text.replace(/^\+/, '');
+  if (!isValidPhone(cleaned)) return null;
+  return cleaned;
 }
 
 function toPlainObject(value) {
@@ -394,17 +415,27 @@ async function processIncomingMessage(baileysMessage) {
   const messageType = extractMessageType(container);
   const keySnapshot = toPlainObject(key);
 
-  // Prefer participant phone jid when available because participant can be a WhatsApp LID (internal id).
-  const participantJid = keySnapshot.participantPn
-    || keySnapshot.participantPN
-    || keySnapshot.participant_pn
-    || key.participantPn
-    || keySnapshot.participant
-    || key.participant
-    || key.remoteJid;
-  const fromParticipant = normalizeIncomingPhone(normalizePhoneFromJid(participantJid));
+  // For group messages, sender phone comes from participant fields, NOT remoteJid (which is the group JID).
+  const participantCandidates = [
+    keySnapshot.participantPn,
+    keySnapshot.participantPN,
+    keySnapshot.participant_pn,
+    key.participantPn,
+    keySnapshot.participant,
+    key.participant,
+  ];
+
+  let fromParticipant = null;
+  for (const candidate of participantCandidates) {
+    const phone = extractPhoneFromJid(candidate);
+    if (phone) {
+      fromParticipant = phone;
+      break;
+    }
+  }
 
   if (!fromParticipant) {
+    logger.warn({ remote_jid: remoteJid, msg_id: normalizeText(key.id) }, 'Group message with no valid participant phone — skipped');
     return;
   }
 

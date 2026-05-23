@@ -31,8 +31,10 @@ class InboundMessageService
                     return $existing;
                 }
 
+                $safePhone = $this->sanitizePhone($data->fromPhone);
+
                 $contact = $this->findOrCreateContact(
-                    phone: $data->fromPhone,
+                    phone: $safePhone,
                     name: $data->senderName,
                     lastMessageAt: $data->receivedAt ?? now(),
                 );
@@ -42,7 +44,7 @@ class InboundMessageService
                     'contact_id' => $contact?->id,
                     'task_id' => null,
                     'direction' => WhatsappMessageDirection::INBOUND,
-                    'from_phone' => $data->fromPhone,
+                    'from_phone' => $safePhone,
                     'to_phone' => $data->toPhone,
                     'group_id' => $data->groupId,
                     'group_name' => $data->groupName,
@@ -91,6 +93,12 @@ class InboundMessageService
             return null;
         }
 
+        if (! $this->isValidContactPhone($phone)) {
+            Log::info('Skipped contact creation for invalid phone.', ['phone' => $phone]);
+
+            return null;
+        }
+
         $contact = WhatsappContact::query()->firstOrNew(['phone' => $phone]);
 
         if (filled($name)) {
@@ -129,6 +137,44 @@ class InboundMessageService
         ]);
 
         return 'auto_'.hash('sha256', $fingerprint);
+    }
+
+    private function sanitizePhone(?string $phone): ?string
+    {
+        if (blank($phone)) {
+            return null;
+        }
+
+        $clean = preg_replace('/[@:].*$/', '', $phone);
+        $clean = ltrim($clean, '+');
+        $clean = preg_replace('/\D/', '', $clean);
+
+        return $this->isValidContactPhone($clean) ? $clean : null;
+    }
+
+    private function isValidContactPhone(?string $phone): bool
+    {
+        if (blank($phone)) {
+            return false;
+        }
+
+        $digits = preg_replace('/\D/', '', $phone);
+
+        if (strlen($digits) < 8 || strlen($digits) > 15) {
+            return false;
+        }
+
+        if (str_starts_with($digits, '120363')) {
+            return false;
+        }
+
+        $lower = strtolower($phone);
+
+        if (str_ends_with($lower, '@g.us') || str_ends_with($lower, '@broadcast') || str_ends_with($lower, '@newsletter')) {
+            return false;
+        }
+
+        return true;
     }
 
     private function isDuplicateWhatsappMessageIdException(QueryException $exception): bool

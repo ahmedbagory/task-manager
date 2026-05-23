@@ -23,6 +23,15 @@ class TaskDetailResource extends JsonResource
         $base['comments'] = TaskCommentResource::collection($this->comments)->resolve();
         $base['attachments'] = TaskAttachmentResource::collection($this->attachments)->resolve();
 
+        if ($this->relationLoaded('assignmentTargets')) {
+            $base['assignment_targets'] = $this->assignmentTargets->map(fn ($target): array => [
+                'type' => $target->target_type,
+                'target_id' => $target->target_id,
+                'name' => $target->target_name,
+                'type_label' => $target->target_type_label,
+            ])->values()->all();
+        }
+
         return $base;
     }
 }

@@ -28,6 +28,7 @@ class TaskAssignmentTarget extends Model
     public function getTargetNameAttribute(): string
     {
         return match ($this->target_type) {
+            'all' => __('جميع الموظفين'),
             'user' => $this->target?->name ?? '—',
             'department' => $this->target?->hierarchy_name ?? '—',
             default => '—',
@@ -37,8 +38,9 @@ class TaskAssignmentTarget extends Model
     public function getTargetTypeLabelAttribute(): string
     {
         return match ($this->target_type) {
+            'all' => 'الكل',
             'user' => 'موظف',
-            'department' => $this->target?->parent_id ? 'وحدة' : 'قسم رئيسي',
+            'department' => $this->target?->parent_id ? 'فرع' : 'قسم',
             default => $this->target_type,
         };
     }

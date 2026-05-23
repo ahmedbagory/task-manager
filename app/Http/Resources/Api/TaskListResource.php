@@ -32,6 +32,8 @@ class TaskListResource extends JsonResource
             ? $this->comments->count()
             : (int) ($this->comments_count ?? 0);
 
+        $myAssignment = $this->resolveMyAssignment($request->user());
+
         return [
             'id' => $this->id,
             'task_number' => $this->task_number,
@@ -69,6 +71,35 @@ class TaskListResource extends JsonResource
                 ? (new UserResource($requestedBy))->resolve()
                 : null,
             'comments_count' => $commentsCount,
+            'my_assignment' => $myAssignment,
+        ];
+    }
+
+    /**
+     * @return array{status: string, is_direct: bool, can_accept: bool}|null
+     */
+    private function resolveMyAssignment(?\App\Models\User $user): ?array
+    {
+        if (! $user) {
+            return null;
+        }
+
+        if ($this->assigned_to_user_id === $user->id) {
+            $assignment = $this->relationLoaded('assignments')
+                ? $this->assignments->where('assigned_to_user_id', $user->id)->sortByDesc('id')->first()
+                : null;
+
+            return [
+                'status' => $assignment?->status?->value ?? 'assigned',
+                'is_direct' => true,
+                'can_accept' => $assignment?->status?->value === 'assigned',
+            ];
+        }
+
+        return [
+            'status' => 'pending',
+            'is_direct' => false,
+            'can_accept' => true,
         ];
     }
 }

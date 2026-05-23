@@ -41,6 +41,13 @@ class MobileNotificationAudienceResolver
      */
     public function resolveUsers(array $targets): Collection
     {
+        if (! empty($targets['send_to_all'])) {
+            return $this->eligibleUsersQuery()
+                ->with(['department.parent'])
+                ->orderBy('name')
+                ->get();
+        }
+
         $selectedTargets = $this->selectedTargets($targets);
         $audienceDepartmentIds = $this->expandAudienceDepartmentIds($selectedTargets['department_ids']);
         $resolvedUserIds = [];
@@ -86,7 +93,10 @@ class MobileNotificationAudienceResolver
      */
     public function resolveUsersForNotification(MobileNotification $mobileNotification): Collection
     {
+        $hasAll = $mobileNotification->targets->contains('target_type', 'all');
+
         return $this->resolveUsers([
+            'send_to_all' => $hasAll,
             'department_ids' => $mobileNotification->targets
                 ->where('target_type', 'department')
                 ->pluck('target_id')
