@@ -53,6 +53,7 @@ class MyTaskController extends Controller
                         $q->whereIn('status', [
                             TaskStatus::NEW->value,
                             TaskStatus::PENDING_ASSIGNMENT->value,
+                            TaskStatus::ASSIGNED->value,
                         ]);
                         $this->applyTargetScope($q, $user);
                     });

@@ -28,8 +28,8 @@ class TaskInfolist
                             ->label(__('Title')),
                         TextEntry::make('status')
                             ->badge()
-                            ->formatStateUsing(fn (TaskStatus|string $state): string => ($state instanceof TaskStatus ? $state : TaskStatus::from((string) $state))->label())
-                            ->color(fn (TaskStatus|string $state): string => ($state instanceof TaskStatus ? $state : TaskStatus::from((string) $state))->color()),
+                            ->formatStateUsing(fn ($state, Task $record): string => $record->workflowStatusLabel())
+                            ->color(fn ($state, Task $record): string => $record->workflowStatus()->color()),
                         TextEntry::make('priority')
                             ->badge()
                             ->formatStateUsing(fn (TaskPriority|string $state): string => ($state instanceof TaskPriority ? $state : TaskPriority::from((string) $state))->label())
@@ -97,7 +97,7 @@ class TaskInfolist
                             ->columns(4)
                             ->placeholder(__('لا توجد أهداف تعيين')),
                     ])
-                    ->visible(fn ($record) => $record->assignmentTargets()->exists()),
+                    ->visible(fn (Task $record) => $record->hasValidAssignmentTargets()),
                 Section::make(__('سجل التعيينات'))
                     ->components([
                         RepeatableEntry::make('assignmentHistories')

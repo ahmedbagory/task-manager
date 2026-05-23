@@ -2,6 +2,7 @@
 
 namespace App\Services\Tasks;
 
+use App\Enums\TaskStatus;
 use App\Models\Department;
 use App\Models\Task;
 use App\Models\TaskAssignmentTarget;
@@ -61,6 +62,8 @@ class TaskAssignmentTargetResolver
                 ]);
             }
 
+            $this->syncTaskDispatchState($task, $actor);
+
             return ['department_ids' => [], 'user_ids' => $allUserIds, 'all' => true];
         }
 
@@ -86,11 +89,43 @@ class TaskAssignmentTargetResolver
             ]);
         }
 
+        $this->syncTaskDispatchState($task, $actor);
+
         return [
             'department_ids' => $departmentIds,
             'user_ids' => $userIds,
             'all' => false,
         ];
+    }
+
+    public function syncTaskDispatchState(Task $task, ?User $actor = null): Task
+    {
+        $task->unsetRelation('assignmentTargets');
+
+        $currentStatus = $task->status instanceof TaskStatus
+            ? $task->status
+            : TaskStatus::from((string) $task->status);
+
+        if (in_array($currentStatus, [
+            TaskStatus::ACCEPTED,
+            TaskStatus::IN_PROGRESS,
+            TaskStatus::WAIT_RESPONSE,
+            TaskStatus::COMPLETED,
+            TaskStatus::CANCELLED,
+        ], true)) {
+            return $task;
+        }
+
+        $nextStatus = $task->workflowStatus();
+
+        if ($currentStatus !== $nextStatus) {
+            $task->forceFill([
+                'status' => $nextStatus->value,
+                'updated_by' => $actor?->id ?? $task->updated_by,
+            ])->save();
+        }
+
+        return $task->refresh();
     }
 
     /**

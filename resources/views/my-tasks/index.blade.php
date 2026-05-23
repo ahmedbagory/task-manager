@@ -24,7 +24,9 @@
     <section class="mt-5 space-y-3">
         @forelse ($tasks as $task)
             @php
-                $statusClass = match ($task->status->value) {
+                $workflowStatus = $task->workflowStatus();
+
+                $statusClass = match ($workflowStatus->value) {
                     'new' => 'bg-slate-100 text-slate-700',
                     'pending_assignment' => 'bg-amber-100 text-amber-800',
                     'assigned' => 'bg-sky-100 text-sky-800',
@@ -61,7 +63,7 @@
                 </div>
 
                 <div class="mt-4 flex flex-wrap items-center gap-2 text-xs">
-                    <span class="rounded-full px-2.5 py-1 font-semibold {{ $statusClass }}">{{ __('Status') }}: {{ $task->status->label() }}</span>
+                    <span class="rounded-full px-2.5 py-1 font-semibold {{ $statusClass }}">{{ __('Status') }}: {{ $task->workflowStatusLabel() }}</span>
                     <span class="rounded-full px-2.5 py-1 font-semibold {{ $priorityClass }}">{{ __('Priority') }}: {{ $task->priority->label() }}</span>
                     @if ($task->department)
                         <span class="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-700">{{ __('Department') }}: {{ $task->department->hierarchy_name }}</span>

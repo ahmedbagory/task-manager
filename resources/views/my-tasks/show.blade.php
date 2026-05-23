@@ -1,6 +1,8 @@
 <x-layouts.my-tasks :title="$task->task_number">
     @php
-        $statusClass = match ($task->status->value) {
+        $workflowStatus = $task->workflowStatus();
+
+        $statusClass = match ($workflowStatus->value) {
             'new' => 'bg-slate-100 text-slate-700',
             'pending_assignment' => 'bg-amber-100 text-amber-800',
             'assigned' => 'bg-sky-100 text-sky-800',
@@ -12,7 +14,7 @@
             default => 'bg-slate-100 text-slate-700',
         };
 
-        $currentStatus = $task->status->value;
+        $currentStatus = $workflowStatus->value;
         $currentAssignmentStatus = $currentAssignment?->status->value;
         $canAcceptAction = $currentAssignmentStatus === 'assigned' && $currentStatus === 'assigned';
         $canStartAction = $currentAssignmentStatus === 'accepted' && $currentStatus === 'accepted';
@@ -42,7 +44,7 @@
             </div>
 
             <div class="flex flex-wrap gap-2 text-xs">
-                <span class="rounded-full px-2.5 py-1 font-semibold {{ $statusClass }}">{{ $task->status->label() }}</span>
+                <span class="rounded-full px-2.5 py-1 font-semibold {{ $statusClass }}">{{ $task->workflowStatusLabel() }}</span>
                 <span class="rounded-full px-2.5 py-1 font-semibold {{ $priorityClass }}">{{ $task->priority->label() }}</span>
             </div>
         </div>

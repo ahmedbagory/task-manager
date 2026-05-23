@@ -5,6 +5,7 @@ namespace App\Filament\Resources\TaskReports\Tables;
 use App\Enums\TaskPriority;
 use App\Enums\TaskSource;
 use App\Enums\TaskStatus;
+use App\Models\Task;
 use App\Filament\Resources\Tasks\TaskResource;
 use App\Services\Departments\DepartmentHierarchyService;
 use App\Support\Rbac;
@@ -33,8 +34,8 @@ class TaskReportsTable
                     ->limit(50),
                 TextColumn::make('status')
                     ->badge()
-                    ->formatStateUsing(fn (TaskStatus|string $state): string => ($state instanceof TaskStatus ? $state : TaskStatus::from((string) $state))->label())
-                    ->color(fn (TaskStatus|string $state): string => ($state instanceof TaskStatus ? $state : TaskStatus::from((string) $state))->color()),
+                    ->formatStateUsing(fn ($state, Task $record): string => $record->workflowStatusLabel())
+                    ->color(fn ($state, Task $record): string => $record->workflowStatus()->color()),
                 TextColumn::make('priority')
                     ->badge()
                     ->formatStateUsing(fn (TaskPriority|string $state): string => ($state instanceof TaskPriority ? $state : TaskPriority::from((string) $state))->label())

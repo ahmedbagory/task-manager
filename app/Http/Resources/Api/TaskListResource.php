@@ -3,6 +3,7 @@
 namespace App\Http\Resources\Api;
 
 use App\Enums\TaskPriority;
+use App\Enums\TaskAssignmentStatus;
 use App\Enums\TaskStatus;
 use App\Models\Task;
 use Illuminate\Http\Request;
@@ -20,9 +21,7 @@ class TaskListResource extends JsonResource
             ? $this->priority
             : TaskPriority::tryFrom((string) $this->priority);
 
-        $status = $this->status instanceof TaskStatus
-            ? $this->status
-            : TaskStatus::tryFrom((string) $this->status);
+        $status = $this->workflowStatus();
 
         $requestedBy = $this->latestAssignment?->assignedByUser
             ?? $this->reportedByUser
@@ -43,8 +42,8 @@ class TaskListResource extends JsonResource
             'location' => $this->location,
             'source' => is_string($this->source) ? $this->source : $this->source?->value,
             'status' => [
-                'value' => $status?->value ?? (string) $this->status,
-                'label' => $status?->label() ?? str((string) $this->status)->replace('_', ' ')->title()->toString(),
+                'value' => $status->value,
+                'label' => $this->workflowStatusLabel(),
             ],
             'priority' => [
                 'value' => $priority?->value ?? (string) $this->priority,
@@ -84,22 +83,28 @@ class TaskListResource extends JsonResource
             return null;
         }
 
+        $workflowStatus = $this->workflowStatus();
+
         if ($this->assigned_to_user_id === $user->id) {
             $assignment = $this->relationLoaded('assignments')
                 ? $this->assignments->where('assigned_to_user_id', $user->id)->sortByDesc('id')->first()
                 : null;
 
             return [
-                'status' => $assignment?->status?->value ?? 'assigned',
+                'status' => $assignment?->status?->value ?? $workflowStatus->value,
                 'is_direct' => true,
-                'can_accept' => $assignment?->status?->value === 'assigned',
+                'can_accept' => $assignment?->status?->value === TaskAssignmentStatus::ASSIGNED->value,
             ];
         }
 
         return [
-            'status' => 'pending',
+            'status' => $workflowStatus->value,
             'is_direct' => false,
-            'can_accept' => true,
+            'can_accept' => in_array($workflowStatus, [
+                TaskStatus::NEW,
+                TaskStatus::PENDING_ASSIGNMENT,
+                TaskStatus::ASSIGNED,
+            ], true),
         ];
     }
 }

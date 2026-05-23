@@ -164,7 +164,7 @@ class EditTask extends EditRecord
     {
         return (auth()->user()?->can('tasks.reassign') ?? false)
             && ! in_array($this->record->status->value, [TaskStatus::COMPLETED->value, TaskStatus::CANCELLED->value], true)
-            && ($this->record->assigned_to_user_id !== null || $this->record->assignmentTargets()->exists());
+            && ($this->record->hasActiveAssignee() || $this->record->hasValidAssignmentTargets());
     }
 
     /**

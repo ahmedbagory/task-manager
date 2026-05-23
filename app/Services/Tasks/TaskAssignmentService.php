@@ -20,6 +20,7 @@ class TaskAssignmentService
         private readonly TaskWhatsAppNotificationService $taskWhatsAppNotificationService,
         private readonly TaskWorkflowNotificationService $taskWorkflowNotificationService,
         private readonly FcmNotificationService $fcmNotificationService,
+        private readonly TaskAssignmentTargetResolver $taskAssignmentTargetResolver,
     ) {}
 
     public function assignTask(Task $task, int $assignedToUserId, ?User $assignedBy = null, ?string $note = null): TaskAssignment
@@ -176,10 +177,11 @@ class TaskAssignmentService
 
             $lockedTask = Task::query()->lockForUpdate()->findOrFail($lockedAssignment->task_id);
             $lockedTask->forceFill([
-                'status' => TaskStatus::REJECTED,
-                'assigned_to_user_id' => $actor->id,
+                'assigned_to_user_id' => null,
                 'updated_by' => $actor->id,
             ])->save();
+
+            $this->taskAssignmentTargetResolver->syncTaskDispatchState($lockedTask, $actor);
 
             TaskAssignmentHistory::query()->create([
                 'task_id' => $lockedTask->id,

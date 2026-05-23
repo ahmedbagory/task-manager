@@ -143,7 +143,7 @@ class ViewTask extends ViewRecord
 
         return (auth()->user()?->can('tasks.reassign') ?? false)
             && ! in_array($task->status->value, [TaskStatus::COMPLETED->value, TaskStatus::CANCELLED->value], true)
-            && ($task->assigned_to_user_id !== null || $task->assignmentTargets->isNotEmpty());
+            && ($task->hasActiveAssignee() || $task->hasValidAssignmentTargets());
     }
 
     protected function getAssignAction(): Action

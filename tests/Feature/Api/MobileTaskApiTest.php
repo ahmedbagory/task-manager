@@ -7,6 +7,7 @@ use App\Enums\TaskSource;
 use App\Enums\TaskStatus;
 use App\Models\DeviceToken;
 use App\Models\Task;
+use App\Models\TaskAssignmentTarget;
 use App\Models\User;
 use App\Services\Authorization\RbacInitializationService;
 use App\Services\Notifications\FcmNotificationService;
@@ -238,7 +239,7 @@ class MobileTaskApiTest extends TestCase
 
         $this->postJson("/api/mobile/my-tasks/{$task->id}/accept")
             ->assertOk()
-            ->assertJsonPath('data.task.status.value', TaskStatus::ASSIGNED->value);
+            ->assertJsonPath('data.task.status.value', TaskStatus::ACCEPTED->value);
 
         $this->postJson("/api/mobile/my-tasks/{$task->id}/start")
             ->assertOk()
@@ -312,5 +313,38 @@ class MobileTaskApiTest extends TestCase
             TaskAssignmentStatus::REJECTED,
             $task->assignments()->latest('id')->first()->status
         );
+    }
+
+    public function test_targeted_task_is_listed_as_pending_acceptance_not_pending_assignment(): void
+    {
+        app(RbacInitializationService::class)->seed();
+
+        $dispatcher = User::factory()->create();
+        $dispatcher->assignRole(Rbac::DISPATCHER);
+
+        $employee = User::factory()->create();
+        $employee->assignRole(Rbac::EMPLOYEE);
+
+        $task = Task::factory()->create([
+            'assigned_to_user_id' => null,
+            'status' => TaskStatus::PENDING_ASSIGNMENT->value,
+            'source' => TaskSource::MANUAL->value,
+        ]);
+
+        TaskAssignmentTarget::query()->create([
+            'task_id' => $task->id,
+            'target_type' => User::class,
+            'target_id' => $employee->id,
+            'assigned_by' => $dispatcher->id,
+        ]);
+
+        Sanctum::actingAs($employee);
+
+        $this->getJson('/api/mobile/my-tasks')
+            ->assertOk()
+            ->assertJsonPath('data.tasks.0.id', $task->id)
+            ->assertJsonPath('data.tasks.0.status.value', TaskStatus::ASSIGNED->value)
+            ->assertJsonPath('data.tasks.0.my_assignment.status', TaskStatus::ASSIGNED->value)
+            ->assertJsonPath('data.tasks.0.my_assignment.can_accept', true);
     }
 }

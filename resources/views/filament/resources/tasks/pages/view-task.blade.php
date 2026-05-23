@@ -1,15 +1,16 @@
 <x-filament-panels::page>
     @php
         $task = $this->getTask();
+        $workflowStatus = $task->workflowStatus();
         $latestAssignment = $task->latestAssignment;
         $resolvedTargetUsers = $this->getResolvedTargetUsers();
         $activityFeed = $this->getActivityFeed();
         $previewItems = $this->getAttachmentPreviewItems();
         $comments = $task->comments->sortBy('created_at')->values();
-        $hasTargets = $task->assignmentTargets->isNotEmpty();
-        $hasDirectAssignee = $task->assignedToUser !== null;
+        $hasTargets = $task->hasValidAssignmentTargets();
+        $hasDirectAssignee = $task->hasActiveAssignee() && $task->assignedToUser !== null;
 
-        $statusClasses = match ($task->status->value) {
+        $statusClasses = match ($workflowStatus->value) {
             'new' => 'bg-slate-100 text-slate-700 ring-slate-200 dark:bg-slate-500/15 dark:text-slate-200 dark:ring-slate-500/20',
             'pending_assignment' => 'bg-amber-100 text-amber-800 ring-amber-200 dark:bg-amber-500/15 dark:text-amber-200 dark:ring-amber-500/20',
             'assigned' => 'bg-sky-100 text-sky-800 ring-sky-200 dark:bg-sky-500/15 dark:text-sky-200 dark:ring-sky-500/20',
@@ -48,7 +49,7 @@
 
                         <div class="flex flex-wrap gap-2">
                             <span class="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset {{ $statusClasses }}">
-                                {{ $task->status->label() }}
+                                {{ $task->workflowStatusLabel() }}
                             </span>
                             <span class="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset {{ $priorityClasses }}">
                                 {{ $task->priority->label() }}
@@ -107,7 +108,7 @@
                             <p class="mt-3 text-lg font-semibold">
                                 {{ $resolvedTargetUsers->count() }} {{ __('موظف') }}
                             </p>
-                            <p class="mt-1 text-sm text-slate-300">{{ __('بانتظار قبول أحد الموظفين') }}</p>
+                            <p class="mt-1 text-sm text-slate-300">{{ __('Pending Acceptance') }}</p>
                             <div class="mt-3 flex flex-wrap gap-1.5">
                                 @foreach ($task->assignmentTargets->take(3) as $target)
                                     <span class="inline-flex items-center rounded-full bg-white/10 px-2.5 py-0.5 text-[11px] font-medium text-slate-200">
@@ -251,7 +252,7 @@
 
                                 @if (! $hasDirectAssignee)
                                     <p class="mt-3 text-xs text-amber-600 dark:text-amber-400">
-                                        {{ __('بانتظار قبول أحد الموظفين المستهدفين') }}
+                                        {{ __('Pending Acceptance') }}
                                     </p>
                                 @endif
                             </div>

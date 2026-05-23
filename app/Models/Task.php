@@ -50,6 +50,62 @@ class Task extends Model
         ];
     }
 
+    public function hasActiveAssignee(): bool
+    {
+        return filled($this->assigned_to_user_id);
+    }
+
+    public function hasValidAssignmentTargets(): bool
+    {
+        if ($this->relationLoaded('assignmentTargets')) {
+            return $this->assignmentTargets
+                ->contains(fn (TaskAssignmentTarget $target): bool => $this->isRecognizedAssignmentTarget($target));
+        }
+
+        return $this->assignmentTargets()
+            ->whereIn('target_type', $this->recognizedAssignmentTargetTypes())
+            ->exists();
+    }
+
+    public function workflowStatus(): TaskStatus
+    {
+        $status = $this->status instanceof TaskStatus
+            ? $this->status
+            : TaskStatus::from((string) $this->status);
+
+        if (in_array($status, [
+            TaskStatus::ACCEPTED,
+            TaskStatus::IN_PROGRESS,
+            TaskStatus::WAIT_RESPONSE,
+            TaskStatus::COMPLETED,
+            TaskStatus::CANCELLED,
+        ], true)) {
+            return $status;
+        }
+
+        if ($this->hasActiveAssignee() || $this->hasValidAssignmentTargets()) {
+            return TaskStatus::ASSIGNED;
+        }
+
+        return TaskStatus::PENDING_ASSIGNMENT;
+    }
+
+    public function workflowStatusLabel(): string
+    {
+        if ($this->isPendingAcceptanceState()) {
+            return __('Pending Acceptance');
+        }
+
+        return $this->workflowStatus()->label();
+    }
+
+    public function isPendingAcceptanceState(): bool
+    {
+        return (! $this->hasActiveAssignee())
+            && $this->hasValidAssignmentTargets()
+            && $this->workflowStatus() === TaskStatus::ASSIGNED;
+    }
+
     public function department(): BelongsTo
     {
         return $this->belongsTo(Department::class);
@@ -113,5 +169,22 @@ class Task extends Model
     public function assignmentHistories(): HasMany
     {
         return $this->hasMany(TaskAssignmentHistory::class)->orderByDesc('created_at');
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function recognizedAssignmentTargetTypes(): array
+    {
+        return array_values(array_unique([
+            ...TaskAssignmentTarget::userTargetTypes(),
+            ...TaskAssignmentTarget::departmentTargetTypes(),
+            TaskAssignmentTarget::LEGACY_ALL,
+        ]));
+    }
+
+    private function isRecognizedAssignmentTarget(TaskAssignmentTarget $target): bool
+    {
+        return in_array($target->target_type, $this->recognizedAssignmentTargetTypes(), true);
     }
 }

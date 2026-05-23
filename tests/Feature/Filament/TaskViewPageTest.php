@@ -51,6 +51,7 @@ class TaskViewPageTest extends TestCase
     public function test_assign_action_updates_user_targets_and_records_single_history_entry(): void
     {
         app(RbacInitializationService::class)->seed();
+        app()->setLocale('ar');
 
         $dispatcher = User::factory()->create();
         $dispatcher->assignRole(Rbac::DISPATCHER);
@@ -75,6 +76,7 @@ class TaskViewPageTest extends TestCase
         $task->refresh();
 
         $this->assertNull($task->assigned_to_user_id);
+        $this->assertSame(TaskStatus::ASSIGNED, $task->workflowStatus());
         $this->assertDatabaseCount('task_assignment_histories', 1);
         $this->assertDatabaseHas('task_assignment_histories', [
             'task_id' => $task->id,
@@ -88,6 +90,10 @@ class TaskViewPageTest extends TestCase
             'target_id' => $employee->id,
             'assigned_by' => $dispatcher->id,
         ]);
+
+        Livewire::test(ViewTask::class, ['record' => $task->getRouteKey()])
+            ->assertSee('بانتظار قبول أحد الموظفين')
+            ->assertDontSee('بانتظار الإسناد');
     }
 
     public function test_reassign_action_resets_active_assignment_and_records_single_reassignment_history_entry(): void
@@ -137,6 +143,7 @@ class TaskViewPageTest extends TestCase
     public function test_assign_action_can_target_all_eligible_users(): void
     {
         app(RbacInitializationService::class)->seed();
+        app()->setLocale('ar');
 
         $dispatcher = User::factory()->create();
         $dispatcher->assignRole(Rbac::DISPATCHER);
@@ -188,9 +195,33 @@ class TaskViewPageTest extends TestCase
         ]);
 
         Livewire::test(ViewTask::class, ['record' => $task->getRouteKey()])
+            ->assertSee('بانتظار قبول أحد الموظفين')
+            ->assertDontSee('بانتظار الإسناد')
             ->assertSee($employeeOne->name)
             ->assertSee($employeeTwo->name)
             ->assertSee($supervisor->name);
+    }
+
+    public function test_task_without_targets_shows_unassigned_state(): void
+    {
+        app(RbacInitializationService::class)->seed();
+        app()->setLocale('ar');
+
+        $dispatcher = User::factory()->create();
+        $dispatcher->assignRole(Rbac::DISPATCHER);
+
+        $task = Task::factory()->create([
+            'assigned_to_user_id' => null,
+            'status' => TaskStatus::PENDING_ASSIGNMENT->value,
+            'source' => TaskSource::MANUAL->value,
+        ]);
+
+        $this->actingAs($dispatcher);
+
+        Livewire::test(ViewTask::class, ['record' => $task->getRouteKey()])
+            ->assertSee('غير مسنَدة')
+            ->assertSee('بانتظار الإسناد')
+            ->assertDontSee('بانتظار قبول أحد الموظفين');
     }
 
     public function test_view_page_does_not_crash_when_legacy_all_target_rows_exist(): void
