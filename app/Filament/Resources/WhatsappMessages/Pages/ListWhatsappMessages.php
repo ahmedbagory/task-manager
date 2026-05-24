@@ -190,6 +190,22 @@ class ListWhatsappMessages extends ListRecords
         return app(WhatsAppMediaService::class)->humanReadableSize($bytes);
     }
 
+    public function messageMediaUrl(WhatsappMessage $message): ?string
+    {
+        return app(WhatsAppMediaService::class)->resolveRenderableMediaUrl(
+            $message->media_path,
+            $message->media_url,
+        );
+    }
+
+    public function messageMediaIsAvailable(WhatsappMessage $message): bool
+    {
+        return app(WhatsAppMediaService::class)->isMediaAvailable(
+            $message->media_path,
+            $message->media_url,
+        );
+    }
+
     public function messageTimestampLabel(WhatsappMessage $message): string
     {
         return $this->messageDate($message)?->format('H:i') ?: '--:--';

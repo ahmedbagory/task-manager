@@ -51,6 +51,23 @@ class WhatsAppMediaService
     ];
 
     /**
+     * @var list<string>
+     */
+    private const REQUIRED_PUBLIC_DIRECTORIES = [
+        'whatsapp-media/images',
+        'whatsapp-media/documents',
+        'whatsapp-media/audio',
+        'whatsapp-media/videos',
+        'whatsapp-media/stickers',
+        'whatsapp-media/outgoing',
+        'whatsapp-media/outgoing/images',
+        'whatsapp-media/outgoing/documents',
+        'whatsapp-media/outgoing/audio',
+        'whatsapp-media/outgoing/videos',
+        'whatsapp-media/outgoing/stickers',
+    ];
+
+    /**
      * @return list<string>
      */
     public static function allowedMimeTypes(): array
@@ -70,6 +87,7 @@ class WhatsAppMediaService
      *   type:string,
      *   mime_type:string,
      *   path:string,
+     *   relative_path:string,
      *   storage_path:string,
      *   url:string,
      *   original_name:string,
@@ -78,6 +96,8 @@ class WhatsAppMediaService
      */
     public function storeOutgoingUpload(UploadedFile $file): array
     {
+        $this->ensureMediaDirectoriesExist();
+
         $mimeType = (string) ($file->getMimeType() ?: $file->getClientMimeType() ?: 'application/octet-stream');
         $type = $this->resolveTypeFromMime($mimeType);
 
@@ -100,7 +120,8 @@ class WhatsAppMediaService
         return [
             'type' => $type,
             'mime_type' => $mimeType,
-            'path' => $storedPath,
+            'path' => 'storage/app/public/'.$storedPath,
+            'relative_path' => $storedPath,
             'storage_path' => storage_path('app/public/'.$storedPath),
             'url' => Storage::disk('public')->url($storedPath),
             'original_name' => (string) $file->getClientOriginalName(),
@@ -153,6 +174,8 @@ class WhatsAppMediaService
 
     public function publicUrlForRelativePath(?string $relativePath): ?string
     {
+        $this->ensureMediaDirectoriesExist();
+
         $relativePath = ltrim(trim((string) $relativePath), '/');
 
         if ($relativePath === '') {
@@ -160,6 +183,49 @@ class WhatsAppMediaService
         }
 
         return Storage::disk('public')->url($relativePath);
+    }
+
+    public function publicUrlForStoredPath(?string $storedPath): ?string
+    {
+        return $this->publicUrlForRelativePath(
+            $this->relativePublicPathFromStoragePath($storedPath),
+        );
+    }
+
+    public function mediaFileExists(?string $storedPath): bool
+    {
+        $this->ensureMediaDirectoriesExist();
+
+        $relativePath = $this->relativePublicPathFromStoragePath($storedPath);
+
+        return filled($relativePath) && Storage::disk('public')->exists($relativePath);
+    }
+
+    public function resolveRenderableMediaUrl(?string $storedPath, ?string $storedUrl): ?string
+    {
+        if ($this->mediaFileExists($storedPath)) {
+            return $this->publicUrlForStoredPath($storedPath);
+        }
+
+        $storedUrl = trim((string) $storedUrl);
+
+        return $storedUrl === '' ? null : $storedUrl;
+    }
+
+    public function isMediaAvailable(?string $storedPath, ?string $storedUrl): bool
+    {
+        return filled($this->resolveRenderableMediaUrl($storedPath, $storedUrl));
+    }
+
+    public function ensureMediaDirectoriesExist(): void
+    {
+        $disk = Storage::disk('public');
+
+        foreach (self::REQUIRED_PUBLIC_DIRECTORIES as $directory) {
+            if (! $disk->exists($directory)) {
+                $disk->makeDirectory($directory);
+            }
+        }
     }
 
     public function humanReadableSize(?int $size): ?string

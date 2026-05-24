@@ -203,6 +203,13 @@ class WhatsAppConversationService
 
         $response = $this->bridgeApiClient->sendMessage($payload);
 
+        if (! is_array($response)) {
+            return $this->markFailedAndRespond(
+                $message,
+                __('The local WhatsApp bridge did not respond to the send request.'),
+            );
+        }
+
         if (($response['success'] ?? false) === true) {
             $updated = $this->markSent(
                 message: $message,

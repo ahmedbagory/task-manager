@@ -1,4 +1,20 @@
-<x-filament-panels::page>
+<x-filament-panels::page class="fi-height-full">
+    @once
+        <style>
+            body:has([data-whatsapp-inbox-root]) .fi-main,
+            body:has([data-whatsapp-inbox-root]) .fi-page,
+            body:has([data-whatsapp-inbox-root]) .fi-page-main,
+            body:has([data-whatsapp-inbox-root]) .fi-page-content {
+                min-height: 0;
+            }
+
+            body:has([data-whatsapp-inbox-root]) .fi-main,
+            body:has([data-whatsapp-inbox-root]) .fi-page-content {
+                overflow: hidden;
+            }
+        </style>
+    @endonce
+
     @php
         $conversations = $this->getConversations();
         $activeContact = $this->getActiveContact();
@@ -47,13 +63,14 @@
             }
         }"
         x-init="scrollToBottom()"
-        class="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)]"
+        data-whatsapp-inbox-root
+        class="grid h-[calc(100dvh-clamp(9rem,12vw,12rem))] min-h-0 gap-4 overflow-hidden xl:grid-cols-[340px_minmax(0,1fr)]"
     >
         <section
-            class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-white/10 dark:bg-white/5"
-            :class="{ 'hidden xl:block': mobileConversationOpen }"
+            class="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-white/10 dark:bg-white/5"
+            :class="{ 'hidden xl:flex': mobileConversationOpen }"
         >
-            <div class="border-b border-gray-200 px-4 py-3 dark:border-white/10">
+            <div class="shrink-0 border-b border-gray-200 px-4 py-3 dark:border-white/10">
                 <div class="flex items-center justify-between gap-3">
                     <div>
                         <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">{{ __('Inbox') }}</p>
@@ -80,7 +97,7 @@
                 </form>
             </div>
 
-            <div class="max-h-[72vh] overflow-y-auto">
+            <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain">
                 @forelse ($conversations as $contact)
                     @php
                         $latestMessage = $contact->latestMessage;
@@ -147,11 +164,11 @@
         </section>
 
         <section
-            class="flex min-h-[72vh] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-white/10 dark:bg-white/5"
+            class="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-white/10 dark:bg-white/5"
             :class="{ 'hidden xl:flex': !mobileConversationOpen }"
         >
             @if ($activeContact)
-                <header class="border-b border-gray-200 bg-gradient-to-r from-white via-primary-50/40 to-white px-4 py-3 dark:border-white/10 dark:from-white/5 dark:via-primary-500/10 dark:to-white/5">
+                <header class="shrink-0 border-b border-gray-200 bg-gradient-to-r from-white via-primary-50/40 to-white px-4 py-3 dark:border-white/10 dark:from-white/5 dark:via-primary-500/10 dark:to-white/5">
                     <div class="flex flex-wrap items-start justify-between gap-3">
                         <div class="flex min-w-0 items-start gap-2.5">
                             <button
@@ -211,7 +228,7 @@
 
                 <div
                     x-ref="timeline"
-                    class="flex-1 space-y-4 overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.08),_transparent_45%)] px-3 py-4 sm:px-4"
+                    class="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.08),_transparent_45%)] px-3 py-4 sm:px-4"
                 >
                     @if ($errors->any())
                         <div class="rounded-xl border border-danger-200 bg-danger-50 px-3 py-2.5 text-[13px] text-danger-700 dark:border-danger-500/30 dark:bg-danger-500/10 dark:text-danger-200">
@@ -232,6 +249,8 @@
                                     $bubbleClasses = $message->isOutgoing()
                                         ? 'rounded-2xl rounded-tr-md border-primary-200 bg-primary-50 text-gray-900 dark:border-primary-500/30 dark:bg-primary-500/15 dark:text-white'
                                         : 'rounded-2xl rounded-tl-md border-gray-200 bg-white text-gray-900 dark:border-white/10 dark:bg-gray-900/70 dark:text-white';
+                                    $mediaUrl = $this->messageMediaUrl($message);
+                                    $mediaAvailable = $this->messageMediaIsAvailable($message);
                                 @endphp
 
                                 <div class="flex {{ $message->isOutgoing() ? 'justify-end' : 'justify-start' }}">
@@ -263,24 +282,24 @@
                                             </div>
                                         @elseif ($message->hasMedia())
                                             <div class="mt-2.5">
-                                                @if (in_array($message->media_type, ['image', 'sticker'], true) && $message->media_url)
-                                                    <a href="{{ $message->media_url }}" target="_blank" class="block overflow-hidden rounded-xl border border-gray-200/70 dark:border-white/10">
+                                                @if ($mediaAvailable && in_array($message->media_type, ['image', 'sticker'], true) && $mediaUrl)
+                                                    <a href="{{ $mediaUrl }}" target="_blank" class="block overflow-hidden rounded-xl border border-gray-200/70 dark:border-white/10">
                                                         <img
-                                                            src="{{ $message->media_url }}"
+                                                            src="{{ $mediaUrl }}"
                                                             alt="{{ $message->media_name ?: __('WhatsApp image') }}"
                                                             class="max-h-64 w-full object-cover"
                                                         >
                                                     </a>
-                                                @elseif ($message->media_type === 'audio' && $message->media_url)
+                                                @elseif ($mediaAvailable && $message->media_type === 'audio' && $mediaUrl)
                                                     <div class="rounded-xl border border-gray-200/70 bg-white/70 p-2.5 dark:border-white/10 dark:bg-white/5">
                                                         <audio controls class="w-full">
-                                                            <source src="{{ $message->media_url }}" type="{{ $message->media_mime }}">
+                                                            <source src="{{ $mediaUrl }}" type="{{ $message->media_mime }}">
                                                         </audio>
                                                     </div>
-                                                @elseif ($message->media_type === 'video' && $message->media_url)
+                                                @elseif ($mediaAvailable && $message->media_type === 'video' && $mediaUrl)
                                                     <div class="overflow-hidden rounded-xl border border-gray-200/70 dark:border-white/10">
                                                         <video controls class="max-h-72 w-full bg-black">
-                                                            <source src="{{ $message->media_url }}" type="{{ $message->media_mime }}">
+                                                            <source src="{{ $mediaUrl }}" type="{{ $message->media_mime }}">
                                                         </video>
                                                     </div>
                                                 @else
@@ -298,9 +317,9 @@
                                                                 </p>
                                                             </div>
 
-                                                            @if ($message->media_url)
+                                                            @if ($mediaUrl)
                                                                 <a
-                                                                    href="{{ $message->media_url }}"
+                                                                    href="{{ $mediaUrl }}"
                                                                     target="_blank"
                                                                     class="inline-flex h-8 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 text-[11px] font-medium text-gray-700 transition hover:bg-gray-50 dark:border-white/10 dark:bg-white/10 dark:text-white"
                                                                 >
@@ -309,6 +328,12 @@
                                                                 </a>
                                                             @endif
                                                         </div>
+
+                                                        @if (! $mediaAvailable)
+                                                            <p class="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
+                                                                {{ __('This file is not currently available from local storage.') }}
+                                                            </p>
+                                                        @endif
                                                     </div>
                                                 @endif
                                             </div>
@@ -369,7 +394,7 @@
                     @endforelse
                 </div>
 
-                <footer class="border-t border-gray-200 bg-white/90 px-3 py-3 backdrop-blur dark:border-white/10 dark:bg-gray-950/70 sm:px-4">
+                <footer class="shrink-0 border-t border-gray-200 bg-white/90 px-3 py-3 backdrop-blur dark:border-white/10 dark:bg-gray-950/70 sm:px-4">
                     @if ($canSend)
                         <form
                             method="POST"
@@ -434,7 +459,7 @@
                     @endif
                 </footer>
             @else
-                <div class="flex min-h-[72vh] items-center justify-center px-6">
+                <div class="flex min-h-0 flex-1 items-center justify-center px-6">
                     <div class="max-w-md rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-6 text-center dark:border-white/10 dark:bg-white/5">
                         <p class="text-[13px] font-semibold text-gray-700 dark:text-gray-200">{{ __('Choose a conversation to view the chat thread.') }}</p>
                         <p class="mt-1.5 text-[13px] text-gray-500 dark:text-gray-400">{{ __('The inbox keeps the existing WhatsApp records and now displays them in a conversation-first layout.') }}</p>

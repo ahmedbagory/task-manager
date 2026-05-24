@@ -200,12 +200,14 @@ class InboundMessageService
 
     private function resolveMediaUrl(InboundMessageData $data): ?string
     {
+        if (filled($data->mediaPath) && $this->whatsAppMediaService->mediaFileExists($data->mediaPath)) {
+            return $this->whatsAppMediaService->publicUrlForStoredPath($data->mediaPath);
+        }
+
         if (filled($data->mediaUrl)) {
             return $data->mediaUrl;
         }
 
-        $relativePath = $this->whatsAppMediaService->relativePublicPathFromStoragePath($data->mediaPath);
-
-        return $this->whatsAppMediaService->publicUrlForRelativePath($relativePath);
+        return $this->whatsAppMediaService->publicUrlForStoredPath($data->mediaPath);
     }
 }

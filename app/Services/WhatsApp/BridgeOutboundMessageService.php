@@ -61,6 +61,14 @@ class BridgeOutboundMessageService
             'phone' => $message->to_phone,
             'group_id' => $message->group_id,
             'group_name' => $message->group_name,
+            'attachment' => $message->hasMedia() ? array_filter([
+                'type' => $message->media_type,
+                'mime_type' => $message->media_mime,
+                'path' => $message->media_path,
+                'url' => $message->media_url,
+                'original_name' => $message->media_name,
+                'size' => $message->media_size,
+            ], fn (mixed $value): bool => $value !== null && $value !== '') : null,
         ];
     }
 

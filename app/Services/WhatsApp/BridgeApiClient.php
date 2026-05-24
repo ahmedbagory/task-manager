@@ -4,13 +4,14 @@ namespace App\Services\WhatsApp;
 
 use App\Services\Settings\ApiSettingsService;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class BridgeApiClient
 {
     private const DEFAULT_PORT = 3001;
 
-    private const TIMEOUT_SECONDS = 5;
+    private const TIMEOUT_SECONDS = 20;
 
     public function __construct(
         private readonly ApiSettingsService $apiSettingsService,
@@ -59,8 +60,20 @@ class BridgeApiClient
                 ->withHeaders($this->headers())
                 ->get($this->baseUrl() . $path);
 
+            if (! $response->successful()) {
+                Log::warning('Bridge API GET request failed.', [
+                    'path' => $path,
+                    'status' => $response->status(),
+                ]);
+            }
+
             return $response->successful() ? $response->json() : null;
-        } catch (Throwable) {
+        } catch (Throwable $throwable) {
+            Log::warning('Bridge API GET request threw an exception.', [
+                'path' => $path,
+                'error' => $throwable->getMessage(),
+            ]);
+
             return null;
         }
     }
@@ -75,10 +88,24 @@ class BridgeApiClient
                 ->withHeaders($this->headers())
                 ->post($this->baseUrl() . $path, $data);
 
+            if (! $response->successful()) {
+                Log::warning('Bridge API POST request failed.', [
+                    'path' => $path,
+                    'status' => $response->status(),
+                    'payload_keys' => array_keys($data),
+                ]);
+            }
+
             $decoded = $response->json();
 
             return is_array($decoded) ? $decoded : null;
-        } catch (Throwable) {
+        } catch (Throwable $throwable) {
+            Log::warning('Bridge API POST request threw an exception.', [
+                'path' => $path,
+                'payload_keys' => array_keys($data),
+                'error' => $throwable->getMessage(),
+            ]);
+
             return null;
         }
     }

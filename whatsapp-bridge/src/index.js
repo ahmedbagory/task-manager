@@ -77,6 +77,17 @@ let activeGroupName = CONFIGURED_GROUP_NAME;
 let latestQrDataUrl = null;
 let connectionState = 'disconnected'; // 'disconnected' | 'qr_pending' | 'connected'
 
+function ensureMediaDirectoriesExist() {
+  const directories = new Set([
+    mediaRootDir,
+    ...Object.values(mediaDirectories).map((directory) => path.resolve(mediaRootDir, directory)),
+  ]);
+
+  for (const directory of directories) {
+    fs.mkdirSync(directory, { recursive: true });
+  }
+}
+
 function deriveOutboundUrl() {
   const base = (process.env.LARAVEL_HEARTBEAT_URL || 'http://127.0.0.1:8000/webhooks/bridge/heartbeat')
     .replace(/\/heartbeat\/?$/, '');
@@ -422,6 +433,7 @@ function storeInboundMediaBuffer(buffer, type, mimeType, originalName) {
   const relativePublicPath = path.posix.join('whatsapp-media', directory, filename);
   const absolutePath = path.resolve(mediaRootDir, directory, filename);
 
+  ensureMediaDirectoriesExist();
   fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
   fs.writeFileSync(absolutePath, buffer);
 
@@ -856,12 +868,8 @@ async function sendOutboundMessage(msg) {
   const text = msg.message || msg.body || '';
   const phone = msg.phone || msg.to_phone || '';
   const groupId = msg.group_id || null;
+  const attachment = normalizeAttachmentPayload(msg.attachment);
   const ackUrl = OUTBOUND_PULL_URL + '/' + messageId;
-
-  if (!text) {
-    await acknowledgeMessage(ackUrl, 'failed', null, 'Empty message body');
-    return;
-  }
 
   let targetJid = null;
 
@@ -878,12 +886,20 @@ async function sendOutboundMessage(msg) {
   }
 
   try {
-    const result = await socket.sendMessage(targetJid, { text });
+    const content = resolveAttachmentContent(attachment, text);
+
+    if (!content) {
+      await acknowledgeMessage(ackUrl, 'failed', null, 'Message text or attachment is required');
+      return;
+    }
+
+    const result = await socket.sendMessage(targetJid, content);
     const sentMsgId = result && result.key ? result.key.id : null;
 
     logger.info({
       message_id: messageId,
       to: targetJid,
+      has_attachment: attachment !== null,
       whatsapp_id: sentMsgId,
     }, 'Outbound message sent via WhatsApp');
 
@@ -1018,6 +1034,12 @@ async function sendDirectMessageRequest(payload) {
   if (!content) {
     throw new Error('Message text or attachment is required.');
   }
+
+  logger.info({
+    to: targetJid,
+    has_attachment: attachment !== null,
+    attachment_type: attachment && attachment.type ? attachment.type : null,
+  }, 'Direct WhatsApp send requested');
 
   const result = await socket.sendMessage(targetJid, content);
 
@@ -1293,6 +1315,7 @@ const apiServer = http.createServer(async (req, res) => {
 
 (async () => {
   logger.info('Starting WhatsApp Web Bridge');
+  ensureMediaDirectoriesExist();
   logger.info({
     webhook_url: WEBHOOK_URL,
     heartbeat_url: HEARTBEAT_URL,

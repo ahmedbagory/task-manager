@@ -97,6 +97,19 @@ class WhatsappConversationControllerTest extends TestCase
 
         $response->assertRedirect('/admin/whatsapp-messages?contact=1');
 
+        Http::assertSent(function ($request): bool {
+            $attachment = $request['attachment'] ?? [];
+            $attachmentPath = (string) ($attachment['path'] ?? '');
+
+            return $request->url() === 'http://127.0.0.1:3001/send-message'
+                && $request['to'] === '966500000010'
+                && $request['message'] === 'Please check the file.'
+                && ($attachment['type'] ?? null) === 'document'
+                && ($attachment['mime_type'] ?? null) === 'application/pdf'
+                && ($attachment['original_name'] ?? null) === 'report.pdf'
+                && str_starts_with($attachmentPath, 'storage/app/public/whatsapp-media/outgoing/documents/');
+        });
+
         $message = WhatsappMessage::query()->latest('id')->first();
 
         $this->assertNotNull($message);
@@ -106,8 +119,9 @@ class WhatsappConversationControllerTest extends TestCase
         $this->assertNotNull($message->media_url);
         $this->assertSame('report.pdf', $message->media_name);
         $this->assertSame('sent', $message->status);
+        $this->assertStringStartsWith('storage/app/public/whatsapp-media/outgoing/documents/', $message->media_path);
 
-        Storage::disk('public')->assertExists($message->media_path);
+        Storage::disk('public')->assertExists(str_replace('storage/app/public/', '', $message->media_path));
     }
 
     public function test_failed_message_can_be_retried(): void
