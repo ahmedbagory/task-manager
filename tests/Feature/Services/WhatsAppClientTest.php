@@ -13,6 +13,13 @@ class WhatsAppClientTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config(['whatsapp.provider' => 'meta']);
+    }
+
     public function test_send_text_message_does_not_call_meta_when_outbound_is_disabled(): void
     {
         config([

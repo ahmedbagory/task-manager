@@ -41,6 +41,15 @@ class BridgeApiClient
     }
 
     /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>|null
+     */
+    public function sendMessage(array $payload): ?array
+    {
+        return $this->post('/send-message', $payload);
+    }
+
+    /**
      * @return array<string, mixed>|null
      */
     private function get(string $path): ?array
@@ -66,7 +75,9 @@ class BridgeApiClient
                 ->withHeaders($this->headers())
                 ->post($this->baseUrl() . $path, $data);
 
-            return $response->successful() ? $response->json() : null;
+            $decoded = $response->json();
+
+            return is_array($decoded) ? $decoded : null;
         } catch (Throwable) {
             return null;
         }

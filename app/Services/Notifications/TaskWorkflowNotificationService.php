@@ -22,7 +22,20 @@ class TaskWorkflowNotificationService
         }
 
         $sender = $message->from_phone ?: 'Unknown sender';
-        $snippet = str((string) ($message->body ?: 'No message body'))->limit(120)->toString();
+        $snippetSource = $message->body;
+
+        if (blank($snippetSource) && $message->hasMedia()) {
+            $snippetSource = match ($message->media_type) {
+                'image' => '[Image]',
+                'document' => '[Document]',
+                'audio' => '[Audio]',
+                'video' => '[Video]',
+                'sticker' => '[Sticker]',
+                default => '[Media]',
+            };
+        }
+
+        $snippet = str((string) ($snippetSource ?: 'No message body'))->limit(120)->toString();
 
         $this->sendDatabaseNotification(
             recipients: $recipients,

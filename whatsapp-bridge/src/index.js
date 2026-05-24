@@ -3,6 +3,7 @@ require('dotenv').config({ path: path.resolve(__dirname, '..', '.env') });
 
 const fs = require('fs');
 const http = require('http');
+const crypto = require('crypto');
 const axios = require('axios');
 const pino = require('pino');
 const qrcode = require('qrcode-terminal');
@@ -12,6 +13,7 @@ const {
   useMultiFileAuthState,
   fetchLatestBaileysVersion,
   DisconnectReason,
+  downloadMediaMessage,
 } = require('@whiskeysockets/baileys');
 
 const logger = pino({
@@ -21,6 +23,7 @@ const logger = pino({
 const WEBHOOK_URL = process.env.LARAVEL_WEBHOOK_URL || 'http://127.0.0.1:8000/webhooks/inbound-message';
 const HEARTBEAT_URL = process.env.LARAVEL_HEARTBEAT_URL || 'http://127.0.0.1:8000/webhooks/bridge/heartbeat';
 const OUTBOUND_PULL_URL = process.env.LARAVEL_OUTBOUND_PULL_URL || deriveOutboundUrl();
+const PUBLIC_BASE_URL = process.env.LARAVEL_PUBLIC_URL || derivePublicBaseUrl(WEBHOOK_URL);
 const BRIDGE_SECRET = (process.env.BRIDGE_SECRET || '').trim();
 const CONFIGURED_GROUP_ID = normalizeGroupId(process.env.GROUP_ID || '');
 const CONFIGURED_GROUP_NAME = normalizeText(process.env.GROUP_NAME || '');
@@ -33,6 +36,33 @@ const API_PORT = Math.max(Number(process.env.API_PORT || 3001) || 3001, 1024);
 const BRIDGE_PROVIDER = 'whatsapp_web_bridge';
 const startupUnix = Math.floor(Date.now() / 1000);
 const authDir = path.resolve(__dirname, '..', 'auth');
+const projectRootDir = path.resolve(__dirname, '..', '..');
+const mediaRootDir = path.resolve(projectRootDir, 'storage', 'app', 'public', 'whatsapp-media');
+const maxMediaSizeBytes = 20 * 1024 * 1024;
+const allowedMediaMimeTypes = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'audio/mpeg',
+  'audio/ogg',
+  'audio/webm',
+  'audio/mp4',
+  'video/mp4',
+  'video/webm',
+]);
+const mediaDirectories = {
+  image: 'images',
+  document: 'documents',
+  audio: 'audio',
+  video: 'videos',
+  sticker: 'stickers',
+};
 
 const httpClient = axios.create({
   timeout: 10000,
@@ -51,6 +81,15 @@ function deriveOutboundUrl() {
   const base = (process.env.LARAVEL_HEARTBEAT_URL || 'http://127.0.0.1:8000/webhooks/bridge/heartbeat')
     .replace(/\/heartbeat\/?$/, '');
   return base + '/outbound';
+}
+
+function derivePublicBaseUrl(webhookUrl) {
+  try {
+    const url = new URL(webhookUrl);
+    return `${url.protocol}//${url.host}`;
+  } catch (_error) {
+    return 'http://127.0.0.1:8000';
+  }
 }
 
 function toBool(value, fallback) {
@@ -175,7 +214,27 @@ function extractMessageType(content) {
     return 'text';
   }
 
-  return type;
+  return normalizeMessageType(type);
+}
+
+function normalizeMessageType(type) {
+  switch (type) {
+    case 'conversation':
+    case 'extendedTextMessage':
+      return 'text';
+    case 'imageMessage':
+      return 'image';
+    case 'documentMessage':
+      return 'document';
+    case 'audioMessage':
+      return 'audio';
+    case 'videoMessage':
+      return 'video';
+    case 'stickerMessage':
+      return 'sticker';
+    default:
+      return type;
+  }
 }
 
 function extractTextBody(content) {
@@ -203,6 +262,280 @@ function extractTextBody(content) {
   }
 
   return null;
+}
+
+function extractMediaDescriptor(content) {
+  if (!content || typeof content !== 'object') {
+    return null;
+  }
+
+  const descriptors = [
+    ['image', content.imageMessage],
+    ['document', content.documentMessage],
+    ['audio', content.audioMessage],
+    ['video', content.videoMessage],
+    ['sticker', content.stickerMessage],
+  ];
+
+  for (const [type, node] of descriptors) {
+    if (node && typeof node === 'object') {
+      return { type, node };
+    }
+  }
+
+  return null;
+}
+
+function toNumberValue(value) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? Math.trunc(value) : null;
+  }
+
+  if (typeof value === 'bigint') {
+    return Number(value);
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
+  }
+
+  if (typeof value === 'object') {
+    if (typeof value.low === 'number') {
+      return Math.trunc(value.low);
+    }
+
+    if (typeof value.toString === 'function') {
+      const parsed = Number(value.toString());
+      return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
+    }
+  }
+
+  return null;
+}
+
+function resolveMimeType(type, node) {
+  const declared = normalizeText(node && node.mimetype);
+
+  if (declared) {
+    return declared;
+  }
+
+  if (type === 'sticker') {
+    return 'image/webp';
+  }
+
+  return null;
+}
+
+function resolveOriginalName(node) {
+  return normalizeText(node && (node.fileName || node.filename || node.displayName));
+}
+
+function isAllowedMediaMime(type, mimeType) {
+  if (!mimeType) {
+    return false;
+  }
+
+  if (type === 'sticker') {
+    return mimeType === 'image/webp';
+  }
+
+  return allowedMediaMimeTypes.has(mimeType);
+}
+
+function resolveFileExtension(originalName, mimeType, type) {
+  const fromOriginal = path.extname(String(originalName || '')).replace(/^\./, '').trim().toLowerCase();
+
+  if (fromOriginal) {
+    return fromOriginal;
+  }
+
+  const mapping = {
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp',
+    'image/gif': 'gif',
+    'application/pdf': 'pdf',
+    'application/msword': 'doc',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+    'application/vnd.ms-excel': 'xls',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+    'audio/mpeg': 'mp3',
+    'audio/ogg': 'ogg',
+    'audio/webm': 'webm',
+    'audio/mp4': 'm4a',
+    'video/mp4': 'mp4',
+    'video/webm': 'webm',
+  };
+
+  if (type === 'sticker') {
+    return 'webp';
+  }
+
+  return mapping[mimeType] || 'bin';
+}
+
+function generateSafeMediaFilename(originalName, mimeType, type) {
+  const now = new Date();
+  const timestamp = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, '0'),
+    String(now.getDate()).padStart(2, '0'),
+  ].join('') + '_' + [
+    String(now.getHours()).padStart(2, '0'),
+    String(now.getMinutes()).padStart(2, '0'),
+    String(now.getSeconds()).padStart(2, '0'),
+  ].join('');
+  const random = crypto.randomBytes(4).toString('hex');
+  const extension = resolveFileExtension(originalName, mimeType, type);
+
+  return `wa_${timestamp}_${random}.${extension}`;
+}
+
+function buildRejectedMediaPayload(type, mimeType, originalName, size, reason) {
+  return {
+    has_media: true,
+    rejected: true,
+    type,
+    mime_type: mimeType,
+    file_name: null,
+    original_name: originalName,
+    size,
+    url: null,
+    path: null,
+    reason,
+  };
+}
+
+function buildPublicMediaUrl(relativePublicPath) {
+  return `${PUBLIC_BASE_URL.replace(/\/$/, '')}/storage/${relativePublicPath.replace(/\\/g, '/').replace(/^\/+/, '')}`;
+}
+
+function storeInboundMediaBuffer(buffer, type, mimeType, originalName) {
+  const directory = mediaDirectories[type] || 'documents';
+  const filename = generateSafeMediaFilename(originalName, mimeType, type);
+  const relativePublicPath = path.posix.join('whatsapp-media', directory, filename);
+  const absolutePath = path.resolve(mediaRootDir, directory, filename);
+
+  fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
+  fs.writeFileSync(absolutePath, buffer);
+
+  return {
+    relativePublicPath,
+    storagePath: path.posix.join('storage', 'app', 'public', relativePublicPath),
+    url: buildPublicMediaUrl(relativePublicPath),
+    fileName: filename,
+  };
+}
+
+async function extractInboundMediaPayload(baileysMessage, content) {
+  const descriptor = extractMediaDescriptor(content);
+
+  if (!descriptor) {
+    return { has_media: false };
+  }
+
+  const type = descriptor.type;
+  const node = descriptor.node;
+  const mimeType = resolveMimeType(type, node);
+  const originalName = resolveOriginalName(node);
+  const declaredSize = toNumberValue(node && node.fileLength);
+
+  if (!isAllowedMediaMime(type, mimeType)) {
+    const reason = `Rejected media MIME type: ${mimeType || 'unknown'}`;
+
+    logger.warn({
+      message_id: normalizeText(baileysMessage?.key?.id),
+      type,
+      mime_type: mimeType,
+      reason,
+    }, 'Inbound media rejected');
+
+    return buildRejectedMediaPayload(type, mimeType, originalName, declaredSize, reason);
+  }
+
+  if (declaredSize && declaredSize > maxMediaSizeBytes) {
+    const reason = `Rejected media larger than 20MB (${declaredSize} bytes)`;
+
+    logger.warn({
+      message_id: normalizeText(baileysMessage?.key?.id),
+      type,
+      mime_type: mimeType,
+      size: declaredSize,
+      reason,
+    }, 'Inbound media rejected');
+
+    return buildRejectedMediaPayload(type, mimeType, originalName, declaredSize, reason);
+  }
+
+  try {
+    const buffer = await downloadMediaMessage(
+      baileysMessage,
+      'buffer',
+      {},
+      {
+        logger,
+        reuploadRequest: socket.updateMediaMessage,
+      }
+    );
+
+    const actualSize = Buffer.isBuffer(buffer) ? buffer.length : null;
+
+    if (!Buffer.isBuffer(buffer) || actualSize === null || actualSize === 0) {
+      const reason = 'Failed to download inbound media buffer';
+      logger.warn({
+        message_id: normalizeText(baileysMessage?.key?.id),
+        type,
+        mime_type: mimeType,
+        reason,
+      }, 'Inbound media rejected');
+
+      return buildRejectedMediaPayload(type, mimeType, originalName, declaredSize, reason);
+    }
+
+    if (actualSize > maxMediaSizeBytes) {
+      const reason = `Rejected media larger than 20MB (${actualSize} bytes)`;
+      logger.warn({
+        message_id: normalizeText(baileysMessage?.key?.id),
+        type,
+        mime_type: mimeType,
+        size: actualSize,
+        reason,
+      }, 'Inbound media rejected');
+
+      return buildRejectedMediaPayload(type, mimeType, originalName, actualSize, reason);
+    }
+
+    const stored = storeInboundMediaBuffer(buffer, type, mimeType, originalName);
+
+    return {
+      has_media: true,
+      rejected: false,
+      type,
+      mime_type: mimeType,
+      file_name: stored.fileName,
+      original_name: originalName,
+      size: actualSize,
+      url: stored.url,
+      path: stored.storagePath,
+    };
+  } catch (error) {
+    const reason = `Failed to download inbound media: ${error.message}`;
+
+    logger.error({
+      message_id: normalizeText(baileysMessage?.key?.id),
+      type,
+      mime_type: mimeType,
+      error: error.message,
+    }, 'Inbound media processing failed');
+
+    return buildRejectedMediaPayload(type, mimeType, originalName, declaredSize, reason);
+  }
 }
 
 function parseReceivedAt(messageTimestamp) {
@@ -406,9 +739,10 @@ async function processIncomingMessage(baileysMessage) {
   }
 
   const container = resolveMessageContainer(baileysMessage.message);
+  const media = await extractInboundMediaPayload(baileysMessage, container);
   const body = extractTextBody(container);
 
-  if (!body) {
+  if (!body && !media.has_media) {
     return;
   }
 
@@ -449,6 +783,8 @@ async function processIncomingMessage(baileysMessage) {
     sender_name: normalizeText(baileysMessage.pushName),
     message_type: messageType,
     body,
+    media_url: media.has_media && !media.rejected ? media.url : null,
+    media,
     raw_payload: baileysMessage,
     received_at: parseReceivedAt(baileysMessage.messageTimestamp),
   };
@@ -561,6 +897,137 @@ async function sendOutboundMessage(msg) {
 
     await acknowledgeMessage(ackUrl, 'failed', null, error.message);
   }
+}
+
+function parseRequestJson(body) {
+  const payload = normalizeText(body);
+
+  if (!payload) {
+    return {};
+  }
+
+  try {
+    const decoded = JSON.parse(payload);
+    return decoded && typeof decoded === 'object' ? decoded : {};
+  } catch (_error) {
+    return {};
+  }
+}
+
+function normalizeAttachmentPayload(value) {
+  return value && typeof value === 'object' ? value : null;
+}
+
+function resolveMessageTargetJid(to, groupId) {
+  const normalizedGroupId = normalizeText(groupId);
+
+  if (normalizedGroupId) {
+    return normalizedGroupId.includes('@') ? normalizedGroupId : `${normalizedGroupId}@g.us`;
+  }
+
+  const cleanPhone = String(to || '').replace(/^\+/, '').replace(/\D/g, '');
+
+  if (!isValidPhone(cleanPhone)) {
+    return null;
+  }
+
+  return `${cleanPhone}@s.whatsapp.net`;
+}
+
+function resolveAttachmentContent(attachment, messageText) {
+  if (!attachment) {
+    return normalizeText(messageText) ? { text: messageText } : null;
+  }
+
+  const type = normalizeText(attachment.type);
+  const mimeType = normalizeText(attachment.mime_type || attachment.mimetype);
+  const localPath = normalizeText(attachment.path);
+  const remoteUrl = normalizeText(attachment.url);
+  const source = localPath
+    ? path.isAbsolute(localPath)
+      ? localPath
+      : path.resolve(projectRootDir, localPath)
+    : remoteUrl;
+
+  if (!source) {
+    throw new Error('Attachment path/url is missing.');
+  }
+
+  if (localPath && !fs.existsSync(source)) {
+    throw new Error(`Attachment file not found: ${localPath}`);
+  }
+
+  if (!isAllowedMediaMime(type, mimeType)) {
+    throw new Error(`Attachment MIME type is not allowed: ${mimeType || 'unknown'}`);
+  }
+
+  const caption = normalizeText(messageText) || undefined;
+
+  switch (type) {
+    case 'image':
+      return {
+        image: { url: source },
+        mimetype: mimeType || undefined,
+        caption,
+      };
+    case 'document':
+      return {
+        document: { url: source },
+        mimetype: mimeType || undefined,
+        fileName: normalizeText(attachment.original_name) || path.basename(String(source)),
+        caption,
+      };
+    case 'audio':
+      return {
+        audio: { url: source },
+        mimetype: mimeType || undefined,
+        ptt: false,
+      };
+    case 'video':
+      return {
+        video: { url: source },
+        mimetype: mimeType || undefined,
+        caption,
+      };
+    case 'sticker':
+      return {
+        sticker: { url: source },
+      };
+    default:
+      throw new Error(`Unsupported attachment type: ${type || 'unknown'}`);
+  }
+}
+
+async function sendDirectMessageRequest(payload) {
+  if (!socket || !socket.user) {
+    throw new Error('Bridge is not connected to WhatsApp.');
+  }
+
+  const to = normalizeText(payload.to);
+  const groupId = normalizeText(payload.group_id);
+  const targetJid = resolveMessageTargetJid(to, groupId);
+
+  if (!targetJid) {
+    throw new Error('No valid WhatsApp recipient was provided.');
+  }
+
+  const messageText = normalizeText(payload.message) || '';
+  const attachment = normalizeAttachmentPayload(payload.attachment);
+  const content = resolveAttachmentContent(attachment, messageText);
+
+  if (!content) {
+    throw new Error('Message text or attachment is required.');
+  }
+
+  const result = await socket.sendMessage(targetJid, content);
+
+  return {
+    success: true,
+    status: 'sent',
+    provider_message_id: result?.key?.id || null,
+    sent_to: targetJid,
+    response: result || null,
+  };
 }
 
 async function acknowledgeMessage(ackUrl, status, providerMessageId, errorMsg, sentTo) {
@@ -797,6 +1264,28 @@ const apiServer = http.createServer(async (req, res) => {
     }, 1000);
 
     return jsonResponse(res, 200, { success: true, message: 'Logged out. New QR code will be generated.' });
+  }
+
+  // POST /send-message
+  if (req.method === 'POST' && url === '/send-message') {
+    const body = await readBody(req);
+    const payload = parseRequestJson(body);
+
+    try {
+      const result = await sendDirectMessageRequest(payload);
+      return jsonResponse(res, 200, result);
+    } catch (error) {
+      logger.error({
+        error: error.message,
+        payload_keys: Object.keys(payload || {}),
+      }, 'Direct send-message request failed');
+
+      return jsonResponse(res, 422, {
+        success: false,
+        status: 'failed',
+        error: error.message,
+      });
+    }
   }
 
   jsonResponse(res, 404, { error: 'Not found' });

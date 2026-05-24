@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\MyTasks\MyTaskWorkspaceController;
+use App\Http\Controllers\WhatsApp\WhatsappConversationController;
 use App\Http\Controllers\Webhooks\WhatsAppWebhookController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -42,6 +43,13 @@ Route::middleware('auth')->group(function (): void {
         ->name('attachments.preview');
     Route::get('/attachments/{attachment}/download', [MyTaskWorkspaceController::class, 'downloadAnyAttachment'])
         ->name('attachments.download');
+
+    Route::middleware('throttle:30,1')->group(function (): void {
+        Route::post('/whatsapp/messages/send', [WhatsappConversationController::class, 'send'])
+            ->name('whatsapp.messages.send');
+        Route::post('/whatsapp/messages/{message}/retry', [WhatsappConversationController::class, 'retry'])
+            ->name('whatsapp.messages.retry');
+    });
 });
 
 Route::post('/webhooks/inbound-message', [WhatsAppWebhookController::class, 'manual'])->name('webhooks.inbound-message.receive');

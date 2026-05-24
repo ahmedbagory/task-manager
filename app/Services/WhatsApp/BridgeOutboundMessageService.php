@@ -82,8 +82,10 @@ class BridgeOutboundMessageService
 
         $message->forceFill([
             'whatsapp_message_id' => $providerMessageId ?: $message->whatsapp_message_id,
+            'external_message_id' => $providerMessageId ?: $message->external_message_id,
             'status' => 'sent',
             'sent_at' => now(),
+            'failed_reason' => null,
             'raw_payload' => $rawPayload,
         ])->save();
 
@@ -107,6 +109,7 @@ class BridgeOutboundMessageService
 
         $message->forceFill([
             'status' => 'failed',
+            'failed_reason' => $error,
             'raw_payload' => $rawPayload,
         ])->save();
 

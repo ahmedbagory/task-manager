@@ -7,6 +7,7 @@ use App\Enums\WhatsappMessageDirection;
 use App\Models\WhatsappContact;
 use App\Models\WhatsappMessage;
 use App\Services\Notifications\TaskWorkflowNotificationService;
+use App\Services\WhatsApp\WhatsAppMediaService;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -15,6 +16,7 @@ class InboundMessageService
 {
     public function __construct(
         private readonly TaskWorkflowNotificationService $taskWorkflowNotificationService,
+        private readonly WhatsAppMediaService $whatsAppMediaService,
     ) {}
 
     public function handle(InboundMessageData $data): WhatsappMessage
@@ -51,7 +53,14 @@ class InboundMessageService
                     'business_phone_number_id' => $data->businessPhoneNumberId,
                     'message_type' => $data->messageType ?? 'unknown',
                     'body' => $data->body,
-                    'media_url' => $data->mediaUrl,
+                    'media_url' => $this->resolveMediaUrl($data),
+                    'media_type' => $data->mediaType,
+                    'media_mime' => $data->mediaMime,
+                    'media_path' => $data->mediaPath,
+                    'media_name' => $data->mediaName,
+                    'media_size' => $data->mediaSize,
+                    'media_rejected' => $data->mediaRejected,
+                    'media_reject_reason' => $data->mediaRejectReason,
                     'status' => 'received',
                     'raw_payload' => $data->rawPayload,
                     'received_at' => $data->receivedAt ?? now(),
@@ -64,6 +73,8 @@ class InboundMessageService
                     'from_phone' => $data->fromPhone,
                     'group_id' => $data->groupId,
                     'message_type' => $data->messageType,
+                    'media_type' => $data->mediaType,
+                    'media_rejected' => $data->mediaRejected,
                 ]);
 
                 DB::afterCommit(function () use ($message): void {
@@ -145,9 +156,10 @@ class InboundMessageService
             return null;
         }
 
+        $hasLeadingPlus = str_starts_with(trim((string) $phone), '+');
         $clean = preg_replace('/[@:].*$/', '', $phone);
-        $clean = ltrim($clean, '+');
         $clean = preg_replace('/\D/', '', $clean);
+        $clean = $hasLeadingPlus ? '+'.$clean : $clean;
 
         return $this->isValidContactPhone($clean) ? $clean : null;
     }
@@ -184,5 +196,16 @@ class InboundMessageService
         return str_contains($message, 'whatsapp_messages_whatsapp_message_id_unique')
             || str_contains($message, 'unique constraint failed: whatsapp_messages.whatsapp_message_id')
             || str_contains($message, 'duplicate entry');
+    }
+
+    private function resolveMediaUrl(InboundMessageData $data): ?string
+    {
+        if (filled($data->mediaUrl)) {
+            return $data->mediaUrl;
+        }
+
+        $relativePath = $this->whatsAppMediaService->relativePublicPathFromStoragePath($data->mediaPath);
+
+        return $this->whatsAppMediaService->publicUrlForRelativePath($relativePath);
     }
 }

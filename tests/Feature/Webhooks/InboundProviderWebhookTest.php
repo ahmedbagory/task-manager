@@ -171,6 +171,87 @@ class InboundProviderWebhookTest extends TestCase
         $this->assertNotNull($status->last_heartbeat_at);
     }
 
+    public function test_bridge_manual_webhook_stores_media_metadata(): void
+    {
+        config(['whatsapp.inbound_bridge_secret' => 'bridge-secret']);
+
+        $response = $this->withHeader('X-Bridge-Token', 'bridge-secret')
+            ->postJson('/webhooks/inbound-message', [
+                'provider' => 'whatsapp_web_bridge',
+                'provider_message_id' => 'BRIDGE-MEDIA-001',
+                'from' => '966500000000',
+                'to' => '120363000000000000@g.us',
+                'group_id' => '120363000000000000@g.us',
+                'group_name' => 'Maintenance Group',
+                'sender_name' => 'Ahmed',
+                'body' => 'Please review the attached file.',
+                'message_type' => 'document',
+                'media' => [
+                    'has_media' => true,
+                    'rejected' => false,
+                    'type' => 'document',
+                    'mime_type' => 'application/pdf',
+                    'file_name' => 'wa_20260524_153000_ab12cd34.pdf',
+                    'original_name' => 'invoice.pdf',
+                    'size' => 12345,
+                    'url' => 'https://task.devline.studio/storage/whatsapp-media/documents/wa_20260524_153000_ab12cd34.pdf',
+                    'path' => 'storage/app/public/whatsapp-media/documents/wa_20260524_153000_ab12cd34.pdf',
+                ],
+            ]);
+
+        $response->assertOk()->assertJson(['ok' => true]);
+
+        $this->assertDatabaseHas('whatsapp_messages', [
+            'whatsapp_message_id' => 'BRIDGE-MEDIA-001',
+            'message_type' => 'document',
+            'media_type' => 'document',
+            'media_mime' => 'application/pdf',
+            'media_path' => 'storage/app/public/whatsapp-media/documents/wa_20260524_153000_ab12cd34.pdf',
+            'media_url' => 'https://task.devline.studio/storage/whatsapp-media/documents/wa_20260524_153000_ab12cd34.pdf',
+            'media_name' => 'invoice.pdf',
+            'media_size' => 12345,
+            'media_rejected' => false,
+        ]);
+    }
+
+    public function test_bridge_manual_webhook_stores_rejected_media_reason(): void
+    {
+        config(['whatsapp.inbound_bridge_secret' => 'bridge-secret']);
+
+        $response = $this->withHeader('X-Bridge-Token', 'bridge-secret')
+            ->postJson('/webhooks/inbound-message', [
+                'provider' => 'whatsapp_web_bridge',
+                'provider_message_id' => 'BRIDGE-MEDIA-REJECT-001',
+                'from' => '966500000000',
+                'to' => '120363000000000000@g.us',
+                'group_id' => '120363000000000000@g.us',
+                'group_name' => 'Maintenance Group',
+                'body' => 'Attachment was blocked.',
+                'message_type' => 'document',
+                'media' => [
+                    'has_media' => true,
+                    'rejected' => true,
+                    'type' => 'document',
+                    'mime_type' => 'application/x-msdownload',
+                    'original_name' => 'script.exe',
+                    'size' => 2048,
+                    'reason' => 'Rejected media MIME type: application/x-msdownload',
+                ],
+            ]);
+
+        $response->assertOk()->assertJson(['ok' => true]);
+
+        $this->assertDatabaseHas('whatsapp_messages', [
+            'whatsapp_message_id' => 'BRIDGE-MEDIA-REJECT-001',
+            'media_type' => 'document',
+            'media_mime' => 'application/x-msdownload',
+            'media_name' => 'script.exe',
+            'media_size' => 2048,
+            'media_rejected' => true,
+            'media_reject_reason' => 'Rejected media MIME type: application/x-msdownload',
+        ]);
+    }
+
     public function test_bridge_heartbeat_updates_bridge_status_record(): void
     {
         config(['whatsapp.inbound_bridge_secret' => 'bridge-secret']);

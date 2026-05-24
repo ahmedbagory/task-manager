@@ -33,15 +33,15 @@ trait ParsesInboundPayload
             return null;
         }
 
+        $hasLeadingPlus = str_starts_with($value, '+');
         $phone = preg_replace('/[@:].*$/', '', $value);
-        $phone = ltrim($phone, '+');
         $phone = preg_replace('/\D/', '', $phone);
 
         if (! $this->isValidPhoneNumber($phone)) {
             return null;
         }
 
-        return $phone;
+        return $hasLeadingPlus ? '+'.$phone : $phone;
     }
 
     protected function isGroupOrBroadcastJid(?string $value): bool

@@ -44,6 +44,17 @@ class WhatsappMessagePolicy
             && $user->hasAnyRole([Rbac::SUPER_ADMIN, Rbac::ADMIN, Rbac::DISPATCHER]);
     }
 
+    public function send(User $user): bool
+    {
+        return $this->canView($user)
+            && $user->hasAnyRole([Rbac::SUPER_ADMIN, Rbac::ADMIN, Rbac::DISPATCHER]);
+    }
+
+    public function retry(User $user, WhatsappMessage $whatsappMessage): bool
+    {
+        return $this->send($user);
+    }
+
     private function canView(User $user): bool
     {
         return $user->can('whatsapp_messages.view') || $user->can('inbox.view');
