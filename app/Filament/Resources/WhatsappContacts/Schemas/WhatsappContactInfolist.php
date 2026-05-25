@@ -13,32 +13,39 @@ class WhatsappContactInfolist
     {
         return $schema
             ->components([
-                Section::make(__('Contact Details'))
+                Section::make('ملخص جهة الاتصال')
+                    ->columns(12)
                     ->components([
-                        TextEntry::make('phone')
-                            ->label(__('Phone Number'))
-                            ->formatStateUsing(fn (?string $state) => BidiText::ltr($state))
-                            ->html(),
                         TextEntry::make('name')
-                            ->label(__('Contact Name'))
+                            ->label('الاسم')
+                            ->state(fn ($record): string => $record->displayName())
                             ->formatStateUsing(fn (?string $state) => BidiText::auto($state))
                             ->html()
-                            ->placeholder('-'),
+                            ->columnSpan(4),
+                        TextEntry::make('phone')
+                            ->label('رقم الهاتف')
+                            ->formatStateUsing(fn (?string $state) => BidiText::ltr($state))
+                            ->html()
+                            ->columnSpan(4),
+                        TextEntry::make('status')
+                            ->label('الحالة')
+                            ->state(fn ($record): string => $record->statusLabel())
+                            ->placeholder('—')
+                            ->columnSpan(4),
                         TextEntry::make('department.name')
-                            ->label(__('Default Department'))
-                            ->placeholder('-'),
+                            ->label('القسم / الوحدة الافتراضية')
+                            ->placeholder('—')
+                            ->columnSpan(4),
                         TextEntry::make('default_location')
-                            ->label(__('Location'))
-                            ->placeholder('-'),
+                            ->label('الموقع الافتراضي')
+                            ->placeholder('—')
+                            ->columnSpan(4),
                         TextEntry::make('last_message_at')
+                            ->label('آخر رسالة')
                             ->dateTime()
-                            ->placeholder('-'),
-                        TextEntry::make('created_at')
-                            ->dateTime(),
-                        TextEntry::make('updated_at')
-                            ->dateTime(),
-                    ])
-                    ->columns(2),
+                            ->placeholder('—')
+                            ->columnSpan(4),
+                    ]),
             ]);
     }
 }

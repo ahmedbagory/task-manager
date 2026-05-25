@@ -3,13 +3,13 @@
 namespace App\Filament\Resources\WhatsappMessages\Pages;
 
 use App\Filament\Resources\Tasks\TaskResource;
+use App\Filament\Resources\WhatsappContacts\WhatsappContactResource;
 use App\Filament\Resources\WhatsappMessages\WhatsappMessageResource;
-use App\Models\BridgeStatus;
 use App\Models\WhatsappContact;
 use App\Models\WhatsappMessage;
-use App\Services\Inbound\BridgeStatusService;
 use App\Services\Settings\ApiSettingsService;
-use App\Services\WhatsApp\BridgeApiClient;
+use App\Services\Inbound\BridgeStatusService;
+use App\Services\WhatsApp\WhatsappBridgeStatusService;
 use App\Services\WhatsApp\WhatsAppMediaService;
 use Filament\Resources\Pages\ListRecords;
 use Illuminate\Support\Carbon;
@@ -86,26 +86,20 @@ class ListWhatsappMessages extends ListRecords
                 $preview = trim((string) ($lastMsg?->body ?? ''));
 
                 if ($preview === '' && $lastMsg?->hasMedia()) {
-                    $preview = match ($lastMsg->media_type) {
-                        'image' => __('Image'),
-                        'document' => __('Document'),
-                        'audio' => __('Audio'),
-                        'video' => __('Video'),
-                        default => __('Media message'),
-                    };
+                    $preview = $this->mediaTypeLabel($lastMsg->media_type);
                 } elseif ($preview === '') {
-                    $preview = __('No content');
+                    $preview = __('بدون محتوى');
                 }
 
                 $senderName = $lastMsg?->contact?->name;
                 if ($senderName && $lastMsg->isIncoming()) {
-                    $preview = $senderName.': '.$preview;
+                    $preview = $senderName.' - '.$preview;
                 }
 
                 return [
                     'type' => 'group',
                     'id' => $row->group_id,
-                    'name' => $row->group_name ?: __('Unnamed group'),
+                    'name' => $row->group_name ?: __('مجموعة بدون اسم'),
                     'phone' => null,
                     'avatar' => mb_substr($row->group_name ?: 'G', 0, 1),
                     'last_message_at' => $row->last_message_at ? Carbon::parse($row->last_message_at) : null,
@@ -144,18 +138,11 @@ class ListWhatsappMessages extends ListRecords
                 $preview = trim((string) ($latestDirect?->body ?? ''));
 
                 if ($preview === '' && $latestDirect?->media_rejected) {
-                    $preview = __('Rejected media');
+                    $preview = __('وسيط مرفوض');
                 } elseif ($preview === '' && $latestDirect?->hasMedia()) {
-                    $preview = match ($latestDirect->media_type) {
-                        'image' => __('Image'),
-                        'document' => __('Document'),
-                        'audio' => __('Audio'),
-                        'video' => __('Video'),
-                        'sticker' => __('Sticker'),
-                        default => __('Media message'),
-                    };
+                    $preview = $this->mediaTypeLabel($latestDirect->media_type);
                 } elseif ($preview === '') {
-                    $preview = __('No content');
+                    $preview = __('بدون محتوى');
                 }
 
                 $lastAt = $latestDirect
@@ -165,7 +152,7 @@ class ListWhatsappMessages extends ListRecords
                 return [
                     'type' => 'contact',
                     'id' => $contact->id,
-                    'name' => $contact->name ?: __('Unknown contact'),
+                    'name' => $contact->name ?: __('جهة اتصال غير معروفة'),
                     'phone' => $contact->phone,
                     'avatar' => strtoupper(mb_substr($contact->name ?: $contact->phone, 0, 1)),
                     'last_message_at' => $lastAt,
@@ -346,35 +333,21 @@ class ListWhatsappMessages extends ListRecords
      */
     public function getBridgeStatus(): ?array
     {
-        $liveStatus = app(BridgeApiClient::class)->getStatus();
-
-        if (is_array($liveStatus)) {
-            return $liveStatus;
-        }
-
-        $storedStatus = BridgeStatus::query()
-            ->where('provider', BridgeStatusService::PROVIDER)
-            ->latest('id')
-            ->first();
-
-        if (! $storedStatus) {
-            return null;
-        }
-
-        return [
-            'state' => $storedStatus->status ?: 'disconnected',
-            'account_id' => $storedStatus->account_id,
-            'account_name' => $storedStatus->account_name,
-            'group_name' => $storedStatus->group_name,
-            'groups_count' => (int) (($storedStatus->meta['groups_count'] ?? 0)),
-            'last_heartbeat_at' => $storedStatus->last_heartbeat_at?->toIso8601String(),
-            'last_message_at' => $storedStatus->last_message_at?->toIso8601String(),
-        ];
+        return app(WhatsappBridgeStatusService::class)->current();
     }
 
     public function canSendMessages(): bool
     {
         return auth()->user()?->can('send', WhatsappMessage::class) ?? false;
+    }
+
+    public function canUseComposer(): bool
+    {
+        $bridgeStatus = $this->getBridgeStatus() ?? [];
+
+        return $this->canSendMessages()
+            && (bool) ($bridgeStatus['supports_bridge'] ?? false)
+            && (bool) ($bridgeStatus['outbound_enabled'] ?? false);
     }
 
     public function shouldSendToSameGroup(): bool
@@ -448,12 +421,12 @@ class ListWhatsappMessages extends ListRecords
     public function messageStatusLabel(?string $status): string
     {
         return match ($status) {
-            'pending', 'queued_bridge', 'dispatching_bridge' => __('Pending'),
-            'sent' => __('Sent'),
-            'delivered' => __('Delivered'),
-            'read' => __('Read'),
-            'failed', 'failed_configuration', 'failed_exception' => __('Failed'),
-            default => (string) ($status ?: __('Unknown')),
+            'pending', 'queued_bridge', 'dispatching_bridge' => __('قيد الانتظار'),
+            'sent' => __('مرسلة'),
+            'delivered' => __('تم التسليم'),
+            'read' => __('مقروءة'),
+            'failed', 'failed_configuration', 'failed_exception' => __('فشلت'),
+            default => (string) ($status ?: __('غير معروفة')),
         };
     }
 
@@ -464,6 +437,17 @@ class ListWhatsappMessages extends ListRecords
         }
 
         return TaskResource::getUrl('create', ['whatsapp_message' => $message->id]);
+    }
+
+    public function activeContactUrl(): ?string
+    {
+        $contact = $this->getActiveContact();
+
+        if (! $contact) {
+            return null;
+        }
+
+        return WhatsappContactResource::getUrl('view', ['record' => $contact]);
     }
 
     public function conversationUrl(WhatsappContact $contact): string
@@ -529,10 +513,10 @@ class ListWhatsappMessages extends ListRecords
         }
 
         if ($message->isOutgoing()) {
-            return $message->sentByUser?->name ?? __('You');
+            return $message->sentByUser?->name ?? __('أنت');
         }
 
-        return $message->contact?->name ?? $message->from_phone ?? __('Unknown');
+        return $message->contact?->name ?? $message->from_phone ?? __('غير معروف');
     }
 
     /**
@@ -576,20 +560,32 @@ class ListWhatsappMessages extends ListRecords
     private function dateLabel(string $dateKey): string
     {
         if ($dateKey === 'unknown') {
-            return __('Unknown date');
+            return __('تاريخ غير معروف');
         }
 
         $date = Carbon::parse($dateKey);
 
         if ($date->isToday()) {
-            return __('Today');
+            return __('اليوم');
         }
 
         if ($date->isYesterday()) {
-            return __('Yesterday');
+            return __('أمس');
         }
 
         return $date->format('Y-m-d');
+    }
+
+    private function mediaTypeLabel(?string $type): string
+    {
+        return match ($type) {
+            'image' => __('صورة'),
+            'document' => __('ملف'),
+            'audio' => __('رسالة صوتية'),
+            'video' => __('فيديو'),
+            'sticker' => __('ملصق'),
+            default => __('وسيط'),
+        };
     }
 
     private function messageDate(WhatsappMessage $message): ?\Illuminate\Support\Carbon

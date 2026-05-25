@@ -34,9 +34,7 @@ class WhatsappMessageResource extends Resource
 
     public static function getRelations(): array
     {
-        return [
-            //
-        ];
+        return [];
     }
 
     public static function getPages(): array
@@ -49,21 +47,21 @@ class WhatsappMessageResource extends Resource
 
     public static function getModelLabel(): string
     {
-        return __('WhatsApp Message');
+        return 'رسالة واتساب';
     }
 
     public static function getPluralModelLabel(): string
     {
-        return __('WhatsApp Inbox');
+        return 'محادثات واتساب';
     }
 
     public static function getNavigationLabel(): string
     {
-        return __('WhatsApp Inbox');
+        return 'محادثات واتساب';
     }
 
     public static function getNavigationGroup(): string|UnitEnum|null
     {
-        return __('Task Management');
+        return __('واتساب');
     }
 }

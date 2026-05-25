@@ -17,55 +17,55 @@ class WhatsappContactsTable
     public static function configure(Table $table): Table
     {
         return $table
+            ->modifyQueryUsing(fn ($query) => $query->with(['department', 'user', 'latestMessage'])->withCount('messages'))
             ->columns([
+                TextColumn::make('name')
+                    ->label('الاسم')
+                    ->state(fn ($record): string => $record->displayName())
+                    ->formatStateUsing(fn (?string $state) => BidiText::auto($state))
+                    ->html()
+                    ->searchable()
+                    ->sortable()
+                    ->description(fn ($record): ?string => $record->user?->name ? 'الموظف المرتبط: ' . $record->user->name : null),
                 TextColumn::make('phone')
-                    ->label(__('Phone'))
+                    ->label('الهاتف')
                     ->formatStateUsing(fn (?string $state) => BidiText::ltr($state))
                     ->html()
                     ->searchable()
                     ->sortable(),
-                TextColumn::make('name')
-                    ->label(__('Name'))
-                    ->formatStateUsing(fn (?string $state) => BidiText::auto($state))
-                    ->html()
-                    ->searchable()
-                    ->placeholder('-'),
                 TextColumn::make('department.hierarchy_name')
                     ->label('القسم / الوحدة')
-                    ->placeholder('-'),
+                    ->toggleable()
+                    ->placeholder('—'),
                 TextColumn::make('default_location')
-                    ->label(__('Location'))
-                    ->searchable()
-                    ->placeholder('-'),
-                TextColumn::make('messages_count')
-                    ->counts('messages')
-                    ->label(__('Messages'))
-                    ->sortable(),
-                TextColumn::make('last_message_at')
-                    ->label(__('Last Message At'))
-                    ->dateTime()
-                    ->sortable()
-                    ->placeholder('-')
-                    ->toggleable(isToggledHiddenByDefault: true),
-                TextColumn::make('updated_at')
-                    ->label(__('Updated At'))
-                    ->dateTime()
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
+                    ->label('الموقع الافتراضي')
+                    ->toggleable()
+                    ->placeholder('—'),
+                TextColumn::make('status')
+                    ->label('الحالة')
+                    ->state(fn ($record): string => $record->statusLabel())
+                    ->badge()
+                    ->color(fn ($record): string => $record->statusColor()),
+                TextColumn::make('latest_message')
+                    ->label('آخر رسالة')
+                    ->state(fn ($record): string => $record->latestMessagePreview())
+                    ->description(fn ($record): string => $record->last_message_at?->diffForHumans() ?? 'بدون تاريخ')
+                    ->wrap()
+                    ->limit(70),
             ])
             ->filters([
                 SelectFilter::make('department_id')
                     ->label('القسم / الوحدة')
                     ->options(fn (): array => app(DepartmentHierarchyService::class)->hierarchyOptions()),
             ])
-            ->defaultSort('updated_at', 'desc')
+            ->defaultSort('last_message_at', 'desc')
             ->recordActions([
-                ViewAction::make(),
-                EditAction::make(),
+                ViewAction::make()->label('عرض'),
+                EditAction::make()->label('تعديل'),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
-                    DeleteBulkAction::make(),
+                    DeleteBulkAction::make()->label('حذف المحدد'),
                 ]),
             ]);
     }

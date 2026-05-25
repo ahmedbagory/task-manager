@@ -14,29 +14,35 @@ class WhatsappContactForm
     {
         return $schema
             ->components([
-                Section::make(__('Contact Routing'))
-                    ->description('اربط أرقام الهواتف بالقسم أو الوحدة الافتراضية والموقع الافتراضي عند تحويل الرسائل إلى مهام.')
+                Section::make('بيانات جهة الاتصال')
+                    ->description('نموذج مختصر لربط رقم واتساب بالقسم والموقع الافتراضي عند المتابعة أو التحويل إلى مهمة.')
+                    ->columns(12)
                     ->components([
+                        TextInput::make('name')
+                            ->label('الاسم')
+                            ->maxLength(255)
+                            ->placeholder('اسم الجهة أو الفرع')
+                            ->columnSpan(4),
                         TextInput::make('phone')
-                            ->label(__('Phone Number'))
+                            ->label('رقم الهاتف')
                             ->required()
                             ->maxLength(255)
                             ->unique(ignoreRecord: true)
-                            ->helperText(__('Use normalized phone format, for example: 201555960069.')),
-                        TextInput::make('name')
-                            ->label(__('Contact Name'))
-                            ->maxLength(255),
+                            ->helperText('بصيغة موحدة مثل: 201555960069')
+                            ->placeholder('201555960069')
+                            ->columnSpan(4),
                         Select::make('department_id')
                             ->label('القسم / الوحدة الافتراضية')
                             ->options(fn (): array => app(DepartmentHierarchyService::class)->hierarchyOptions())
                             ->searchable()
-                            ->preload(),
+                            ->preload()
+                            ->columnSpan(4),
                         TextInput::make('default_location')
                             ->label('الموقع الافتراضي')
                             ->maxLength(255)
-                            ->placeholder(__('Example: Mega 6')),
-                    ])
-                    ->columns(2),
+                            ->placeholder('مثال: فرع مدينة نصر')
+                            ->columnSpan(6),
+                    ]),
             ]);
     }
 }

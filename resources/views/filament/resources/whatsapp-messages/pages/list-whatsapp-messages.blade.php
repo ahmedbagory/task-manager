@@ -1,16 +1,42 @@
 <x-filament-panels::page class="fi-height-full">
     @once
         <style>
-            body:has([data-whatsapp-inbox-root]) .fi-main,
-            body:has([data-whatsapp-inbox-root]) .fi-page,
-            body:has([data-whatsapp-inbox-root]) .fi-page-main,
-            body:has([data-whatsapp-inbox-root]) .fi-page-content {
+            body:has([data-wa-root]) .fi-main,
+            body:has([data-wa-root]) .fi-page,
+            body:has([data-wa-root]) .fi-page-main,
+            body:has([data-wa-root]) .fi-page-content {
                 min-height: 0;
             }
 
-            body:has([data-whatsapp-inbox-root]) .fi-main,
-            body:has([data-whatsapp-inbox-root]) .fi-page-content {
+            body:has([data-wa-root]) .fi-main,
+            body:has([data-wa-root]) .fi-page-content {
                 overflow: hidden;
+            }
+
+            body:has([data-wa-root]) .fi-header {
+                display: none !important;
+            }
+
+            [data-wa-root] .wa-chat-surface {
+                background:
+                    radial-gradient(circle at top right, rgba(16, 185, 129, 0.08), transparent 28%),
+                    radial-gradient(circle at bottom left, rgba(59, 130, 246, 0.08), transparent 24%),
+                    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(248, 250, 252, 0.96));
+            }
+
+            .dark [data-wa-root] .wa-chat-surface {
+                background:
+                    radial-gradient(circle at top right, rgba(16, 185, 129, 0.09), transparent 28%),
+                    radial-gradient(circle at bottom left, rgba(59, 130, 246, 0.10), transparent 24%),
+                    linear-gradient(180deg, rgba(10, 17, 28, 0.98), rgba(12, 21, 33, 0.98));
+            }
+
+            [data-wa-root] .wa-thread-bg {
+                background-image: url("data:image/svg+xml,%3Csvg width='84' height='84' viewBox='0 0 84 84' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23cbd5e1' fill-opacity='.22'%3E%3Cpath d='M42 6a4 4 0 0 1 4 4v6h6a4 4 0 1 1 0 8h-6v6a4 4 0 1 1-8 0v-6h-6a4 4 0 1 1 0-8h6v-6a4 4 0 0 1 4-4Zm-24 48a4 4 0 0 1 4 4v6h6a4 4 0 1 1 0 8h-6v6a4 4 0 1 1-8 0v-6H8a4 4 0 1 1 0-8h6v-6a4 4 0 0 1 4-4Zm48 0a4 4 0 0 1 4 4v6h6a4 4 0 1 1 0 8h-6v6a4 4 0 1 1-8 0v-6h-6a4 4 0 1 1 0-8h6v-6a4 4 0 0 1 4-4Z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+            }
+
+            .dark [data-wa-root] .wa-thread-bg {
+                background-image: url("data:image/svg+xml,%3Csvg width='84' height='84' viewBox='0 0 84 84' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23334155' fill-opacity='.16'%3E%3Cpath d='M42 6a4 4 0 0 1 4 4v6h6a4 4 0 1 1 0 8h-6v6a4 4 0 1 1-8 0v-6h-6a4 4 0 1 1 0-8h6v-6a4 4 0 0 1 4-4Zm-24 48a4 4 0 0 1 4 4v6h6a4 4 0 1 1 0 8h-6v6a4 4 0 1 1-8 0v-6H8a4 4 0 1 1 0-8h6v-6a4 4 0 0 1 4-4Zm48 0a4 4 0 0 1 4 4v6h6a4 4 0 1 1 0 8h-6v6a4 4 0 1 1-8 0v-6h-6a4 4 0 1 1 0-8h6v-6a4 4 0 0 1 4-4Z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
             }
         </style>
     @endonce
@@ -23,33 +49,71 @@
         $activeGroupName = $isGroupActive ? $this->getActiveGroupName() : null;
         $activeGroupMembers = $isGroupActive ? $this->getActiveGroupMembersCount() : 0;
         $groupedMessages = $this->getGroupedMessages();
-        $bridgeStatus = $this->getBridgeStatus();
+        $bridgeStatus = $this->getBridgeStatus() ?? [];
         $canSend = $this->canSendMessages();
+        $canUseComposer = $this->canUseComposer();
         $replyGroup = $this->getReplyGroup();
         $sendToSameGroup = $this->shouldSendToSameGroup();
         $sessionUrl = \App\Filament\Pages\WhatsAppSession::getUrl();
+        $contactsUrl = \App\Filament\Resources\WhatsappContacts\WhatsappContactResource::getUrl('index');
+        $activeContactUrl = $this->activeContactUrl();
         $canManageSession = auth()->user()?->can('settings.api.manage') ?? false;
         $bridgeState = $bridgeStatus['state'] ?? 'disconnected';
-        $bridgeStateColor = match ($bridgeState) {
-            'connected' => 'success',
-            'qr_pending' => 'warning',
-            default => 'danger',
-        };
-        $bridgeStateLabel = match ($bridgeState) {
-            'connected' => __('Connected'),
-            'qr_pending' => __('QR Pending'),
-            default => __('Disconnected'),
-        };
         $hasActiveConversation = $activeContact || $isGroupActive;
+        $sidebarCount = $conversations->count();
     @endphp
 
     <div
         x-data="{
-            mobileConversationOpen: {{ $hasActiveConversation ? 'true' : 'false' }},
+            mobileView: {{ $hasActiveConversation ? "'chat'" : "'list'" }},
             sending: false,
+            lightboxOpen: false,
+            lightboxUrl: '',
+            lightboxType: 'image',
+            lightboxName: '',
+            bridgeState: @js($bridgeState),
+            bridgeLabel: @js($bridgeStatus['label'] ?? 'غير متصل'),
+            bridgeHex: @js($bridgeStatus['hex'] ?? '#ef4444'),
+            bridgeHint: @js($bridgeStatus['status_hint'] ?? ''),
+            bridgeCanSend: {{ ($bridgeStatus['can_send'] ?? false) ? 'true' : 'false' }},
+            bridgeCanQueue: {{ ($bridgeStatus['can_queue'] ?? false) ? 'true' : 'false' }},
+            bridgeComposerEnabled: {{ (($bridgeStatus['supports_bridge'] ?? false) && ($bridgeStatus['outbound_enabled'] ?? false)) ? 'true' : 'false' }},
+            init() {
+                this.scrollToBottom();
+                this.pollBridge();
+            },
+            setBridge(data) {
+                this.bridgeState = data.state || 'disconnected';
+                this.bridgeLabel = data.label || 'غير متصل';
+                this.bridgeHex = data.hex || '#ef4444';
+                this.bridgeHint = data.status_hint || '';
+                this.bridgeCanSend = Boolean(data.can_send);
+                this.bridgeCanQueue = Boolean(data.can_queue);
+                this.bridgeComposerEnabled = Boolean(data.supports_bridge) && Boolean(data.outbound_enabled);
+            },
+            async pollBridge() {
+                try {
+                    const response = await fetch('{{ route('whatsapp.bridge-status') }}', {
+                        headers: { Accept: 'application/json' },
+                    });
+
+                    if (response.ok) {
+                        this.setBridge(await response.json());
+                    }
+                } catch (_) {
+                    this.setBridge({
+                        state: 'disconnected',
+                        label: 'غير متصل',
+                        hex: '#ef4444',
+                        status_hint: 'تعذر الوصول إلى حالة البريدج حاليًا.',
+                    });
+                }
+
+                setTimeout(() => this.pollBridge(), 10000);
+            },
             resize(el) {
                 el.style.height = '0px';
-                el.style.height = Math.min(el.scrollHeight, 180) + 'px';
+                el.style.height = Math.min(el.scrollHeight, 140) + 'px';
             },
             submitOnEnter(event) {
                 if (event.shiftKey) {
@@ -61,49 +125,90 @@
             },
             scrollToBottom() {
                 this.$nextTick(() => {
-                    if (this.$refs.timeline) {
-                        this.$refs.timeline.scrollTop = this.$refs.timeline.scrollHeight;
+                    if (this.$refs.thread) {
+                        this.$refs.thread.scrollTop = this.$refs.thread.scrollHeight;
                     }
                 });
+            },
+            openMedia(url, type, name) {
+                this.lightboxUrl = url;
+                this.lightboxType = type;
+                this.lightboxName = name || '';
+                this.lightboxOpen = true;
+            },
+            closeMedia() {
+                this.lightboxOpen = false;
+                this.lightboxUrl = '';
+                this.lightboxType = 'image';
+                this.lightboxName = '';
             }
         }"
-        x-init="scrollToBottom()"
-        data-whatsapp-inbox-root
-        class="grid h-[calc(100dvh-clamp(9rem,12vw,12rem))] min-h-0 gap-4 overflow-hidden xl:grid-cols-[340px_minmax(0,1fr)]"
+        data-wa-root
+        class="wa-chat-surface flex h-[calc(100dvh-7rem)] min-h-0 overflow-hidden rounded-[1.75rem] border border-gray-200 shadow-sm dark:border-white/10 xl:flex-row-reverse"
     >
-        {{-- === SIDEBAR: Conversation List === --}}
-        <section
-            class="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-white/10 dark:bg-white/5"
-            :class="{ 'hidden xl:flex': mobileConversationOpen }"
+        <aside
+            class="flex h-full w-full flex-col border-s border-gray-200/80 bg-white/90 backdrop-blur dark:border-white/10 dark:bg-[#07111d]/90 xl:w-[360px] xl:shrink-0"
+            :class="{ 'hidden xl:flex': mobileView === 'chat' }"
         >
-            <div class="shrink-0 border-b border-gray-200 px-4 py-3 dark:border-white/10">
-                <div class="flex items-center justify-between gap-3">
-                    <div>
-                        <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">{{ __('Inbox') }}</p>
-                        <h2 class="mt-1 text-xl font-semibold text-gray-950 dark:text-white">{{ __('WhatsApp Conversations') }}</h2>
+            <div class="shrink-0 border-b border-gray-200/80 px-4 py-4 dark:border-white/10">
+                <div class="flex items-start justify-between gap-3">
+                    <div class="space-y-1">
+                        <p class="text-[11px] font-medium tracking-[0.22em] text-emerald-600 dark:text-emerald-300">{{ __('واتساب') }}</p>
+                        <h2 class="text-lg font-semibold text-gray-950 dark:text-white">{{ __('محادثات واتساب') }}</h2>
                     </div>
 
-                    <x-filament::badge :color="$bridgeStateColor">
-                        {{ $bridgeStateLabel }}
-                    </x-filament::badge>
+                    <div class="flex items-center gap-2">
+                        @if ($canManageSession)
+                            <a
+                                href="{{ $sessionUrl }}"
+                                class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 text-gray-500 transition hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-600 dark:border-white/10 dark:text-gray-300 dark:hover:border-emerald-500/30 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-200"
+                                title="{{ __('جلسة واتساب') }}"
+                            >
+                                <x-filament::icon icon="heroicon-o-qr-code" class="h-4 w-4" />
+                            </a>
+                        @endif
+
+                        <a
+                            href="{{ $contactsUrl }}"
+                            class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 text-gray-500 transition hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-600 dark:border-white/10 dark:text-gray-300 dark:hover:border-emerald-500/30 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-200"
+                            title="{{ __('جهات الاتصال') }}"
+                        >
+                            <x-filament::icon icon="heroicon-o-user-group" class="h-4 w-4" />
+                        </a>
+                    </div>
+                </div>
+
+                <div class="mt-3 flex flex-wrap items-center gap-2">
+                    <span
+                        class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm"
+                        :style="'background-color:' + bridgeHex"
+                    >
+                        <span class="inline-block h-1.5 w-1.5 rounded-full bg-white/85" :class="bridgeCanSend && 'animate-pulse'"></span>
+                        <span x-text="bridgeLabel"></span>
+                    </span>
+
+                    <span class="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-medium text-gray-600 dark:bg-white/10 dark:text-gray-300">
+                        {{ $sidebarCount }} {{ __('محادثة') }}
+                    </span>
                 </div>
 
                 <form method="GET" action="{{ $this->indexUrlWithoutContact() }}" class="mt-3">
-                    <label for="whatsapp-search" class="sr-only">{{ __('Search conversations') }}</label>
-                    <div class="relative">
+                    <label class="relative block">
+                        <span class="pointer-events-none absolute inset-y-0 start-3 flex items-center text-gray-400">
+                            <x-filament::icon icon="heroicon-o-magnifying-glass" class="h-4 w-4" />
+                        </span>
                         <input
-                            id="whatsapp-search"
                             type="search"
                             name="search"
                             value="{{ request('search') }}"
-                            placeholder="{{ __('Search by name, phone, or message') }}"
-                            class="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-[13px] text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-primary-400 focus:bg-white dark:border-white/10 dark:bg-white/5 dark:text-white"
+                            placeholder="{{ __('ابحث بالاسم أو الرقم أو الرسالة') }}"
+                            class="w-full rounded-2xl border border-gray-200 bg-gray-50 py-2 pe-3 ps-9 text-sm text-gray-900 outline-none transition focus:border-emerald-300 focus:bg-white focus:ring-0 dark:border-white/10 dark:bg-white/5 dark:text-white dark:focus:border-emerald-500/40"
                         >
-                    </div>
+                    </label>
                 </form>
             </div>
 
-            <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+            <div class="min-h-0 flex-1 overflow-y-auto px-2 py-2">
                 @forelse ($conversations as $convItem)
                     @php
                         $isActive = $this->isConversationActive($convItem);
@@ -112,137 +217,117 @@
 
                     <a
                         href="{{ $this->conversationItemUrl($convItem) }}"
-                        @click="if (window.innerWidth < 1280) { mobileConversationOpen = true }"
-                        class="flex items-start gap-2.5 border-b border-gray-100 px-4 py-3 transition hover:bg-gray-50 dark:border-white/5 dark:hover:bg-white/5"
-                        @class([
-                            'bg-primary-50/70 dark:bg-primary-500/10' => $isActive,
-                        ])
+                        @click="if (window.innerWidth < 1280) mobileView = 'chat'"
+                        class="mb-1.5 flex items-center gap-3 rounded-2xl border px-3 py-3 transition {{ $isActive ? 'border-emerald-200 bg-emerald-50 shadow-sm dark:border-emerald-500/25 dark:bg-emerald-500/10' : 'border-transparent hover:border-gray-200 hover:bg-gray-50 dark:hover:border-white/10 dark:hover:bg-white/5' }}"
                     >
-                        {{-- Avatar --}}
-                        @if ($isGroup)
-                            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200">
-                                <x-filament::icon icon="heroicon-o-user-group" class="h-5 w-5" />
-                            </div>
-                        @else
-                            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gray-100 text-[13px] font-semibold text-gray-700 dark:bg-white/10 dark:text-white">
-                                {{ $convItem['avatar'] }}
-                            </div>
-                        @endif
+                        <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl {{ $isGroup ? 'bg-emerald-500 text-white' : 'bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-white' }}">
+                            @if ($isGroup)
+                                <x-filament::icon icon="heroicon-s-user-group" class="h-5 w-5" />
+                            @else
+                                <span class="text-sm font-bold">{{ $convItem['avatar'] }}</span>
+                            @endif
+                        </div>
 
                         <div class="min-w-0 flex-1">
-                            <div class="flex items-start justify-between gap-3">
+                            <div class="flex items-start justify-between gap-2">
                                 <div class="min-w-0">
-                                    <div class="flex items-center gap-1.5">
-                                        <p class="truncate text-[14px] font-semibold leading-5 text-gray-950 dark:text-white">
-                                            {{ $convItem['name'] }}
-                                        </p>
-                                        @if ($isGroup)
-                                            <span class="shrink-0 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200">
-                                                {{ __('Group') }}
-                                            </span>
-                                        @endif
-                                    </div>
-                                    @if (! $isGroup && $convItem['phone'])
-                                        <p class="mt-0.5 text-[12px] text-gray-500 dark:text-gray-400" dir="ltr" style="unicode-bidi:isolate;">
-                                            {{ $convItem['phone'] }}
-                                        </p>
-                                    @elseif ($isGroup && $convItem['members_count'] > 0)
-                                        <p class="mt-0.5 text-[12px] text-gray-500 dark:text-gray-400">
-                                            {{ trans_choice(':count member|:count members', $convItem['members_count'], ['count' => $convItem['members_count']]) }}
-                                        </p>
-                                    @endif
+                                    <p class="truncate text-sm font-semibold text-gray-950 dark:text-white">{{ $convItem['name'] }}</p>
+                                    <p class="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400" @if (! $isGroup && filled($convItem['phone'])) dir="ltr" style="unicode-bidi:isolate" @endif>
+                                        {{ $isGroup ? __('مجموعة') : ($convItem['phone'] ?: __('بدون رقم')) }}
+                                    </p>
                                 </div>
 
-                                <p class="shrink-0 pt-0.5 text-[10px] text-gray-500 dark:text-gray-400">
-                                    {{ $convItem['last_message_at']?->format('H:i') }}
-                                </p>
+                                <span class="shrink-0 text-[11px] font-medium text-gray-400 dark:text-gray-500">
+                                    {{ $convItem['last_message_at']?->format('H:i') ?? '—' }}
+                                </span>
                             </div>
 
-                            <p class="mt-1.5 truncate text-[13px] leading-5 text-gray-600 dark:text-gray-300">
+                            <p class="mt-2 truncate text-[12px] leading-5 text-gray-600 dark:text-gray-300">
                                 {{ $convItem['preview'] }}
                             </p>
                         </div>
                     </a>
                 @empty
-                    <div class="p-4">
-                        <div class="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4 text-[13px] text-gray-500 dark:border-white/10 dark:bg-white/5 dark:text-gray-400">
-                            {{ __('No WhatsApp conversations were found for the current search.') }}
+                    <div class="flex h-full items-center justify-center px-5 py-10 text-center">
+                        <div class="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-5 py-6 text-sm text-gray-500 dark:border-white/10 dark:bg-white/5 dark:text-gray-400">
+                            {{ __('لا توجد محادثات لعرضها حاليًا.') }}
                         </div>
                     </div>
                 @endforelse
             </div>
-        </section>
+        </aside>
 
-        {{-- === MAIN PANEL: Chat Thread === --}}
-        <section
-            class="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-white/10 dark:bg-white/5"
-            :class="{ 'hidden xl:flex': !mobileConversationOpen }"
-        >
+        <main class="flex min-w-0 flex-1 flex-col" :class="{ 'hidden xl:flex': mobileView === 'list' }">
             @if ($hasActiveConversation)
-                {{-- Header --}}
-                <header class="shrink-0 border-b border-gray-200 bg-gradient-to-r from-white via-primary-50/40 to-white px-4 py-3 dark:border-white/10 dark:from-white/5 dark:via-primary-500/10 dark:to-white/5">
-                    <div class="flex flex-wrap items-start justify-between gap-3">
-                        <div class="flex min-w-0 items-start gap-2.5">
-                            <button
-                                type="button"
-                                class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-600 xl:hidden dark:border-white/10 dark:bg-white/10 dark:text-gray-200"
-                                @click="mobileConversationOpen = false"
-                            >
-                                <x-filament::icon icon="heroicon-o-arrow-left" class="h-4 w-4" />
-                            </button>
+                <header class="shrink-0 border-b border-gray-200/80 bg-white/85 px-4 py-3 backdrop-blur dark:border-white/10 dark:bg-[#081320]/90">
+                    <div class="flex items-center gap-3">
+                        <button
+                            type="button"
+                            class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 text-gray-500 transition hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-600 dark:border-white/10 dark:text-gray-300 dark:hover:border-emerald-500/30 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-200 xl:hidden"
+                            @click="mobileView = 'list'"
+                        >
+                            <x-filament::icon icon="heroicon-o-arrow-right" class="h-4 w-4" />
+                        </button>
 
+                        <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl {{ $isGroupActive ? 'bg-emerald-500 text-white' : 'bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-white' }}">
                             @if ($isGroupActive)
-                                {{-- Group header avatar --}}
-                                <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200">
-                                    <x-filament::icon icon="heroicon-o-user-group" class="h-5 w-5" />
-                                </div>
-
-                                <div class="min-w-0">
-                                    <div class="flex flex-wrap items-center gap-1.5">
-                                        <h2 class="truncate text-base font-semibold text-gray-950 dark:text-white">
-                                            {{ $activeGroupName ?: __('Unnamed group') }}
-                                        </h2>
-
-                                        <span class="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200">
-                                            {{ __('Group') }}
-                                        </span>
-
-                                        <x-filament::badge :color="$bridgeStateColor">
-                                            {{ $bridgeStateLabel }}
-                                        </x-filament::badge>
-                                    </div>
-
-                                    <div class="mt-0.5 flex flex-wrap items-center gap-2 text-[12px] text-gray-500 dark:text-gray-400">
-                                        @if ($activeGroupMembers > 0)
-                                            <span>{{ trans_choice(':count member|:count members', $activeGroupMembers, ['count' => $activeGroupMembers]) }}</span>
-                                        @endif
-                                    </div>
-                                </div>
+                                <x-filament::icon icon="heroicon-s-user-group" class="h-5 w-5" />
                             @else
-                                {{-- Contact header avatar --}}
-                                <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-100 text-[14px] font-semibold text-primary-700 dark:bg-primary-500/20 dark:text-primary-200">
-                                    {{ strtoupper(mb_substr($activeContact->name ?: $activeContact->phone, 0, 1)) }}
-                                </div>
-
-                                <div class="min-w-0">
-                                    <div class="flex flex-wrap items-center gap-1.5">
-                                        <h2 class="truncate text-base font-semibold text-gray-950 dark:text-white">
-                                            {{ $activeContact->name ?: __('Unknown contact') }}
-                                        </h2>
-
-                                        <x-filament::badge :color="$bridgeStateColor">
-                                            {{ $bridgeStateLabel }}
-                                        </x-filament::badge>
-                                    </div>
-
-                                    <div class="mt-0.5 flex flex-wrap items-center gap-2 text-[12px] text-gray-500 dark:text-gray-400">
-                                        <span dir="ltr" style="unicode-bidi:isolate;">{{ $activeContact->phone }}</span>
-                                    </div>
-                                </div>
+                                <span class="text-sm font-bold">{{ strtoupper(mb_substr($activeContact->name ?: $activeContact->phone, 0, 1)) }}</span>
                             @endif
                         </div>
 
-                        <div class="flex flex-wrap items-center gap-2">
+                        <div class="min-w-0 flex-1">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <h3 class="truncate text-sm font-semibold text-gray-950 dark:text-white">
+                                    {{ $isGroupActive ? ($activeGroupName ?: __('مجموعة بدون اسم')) : ($activeContact->name ?: __('جهة اتصال غير معروفة')) }}
+                                </h3>
+
+                                @if ($isGroupActive)
+                                    <span class="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200">
+                                        {{ $activeGroupMembers > 0 ? $activeGroupMembers . ' ' . __('عضو') : __('مجموعة') }}
+                                    </span>
+                                @endif
+                            </div>
+
+                            <p class="mt-1 truncate text-xs text-gray-500 dark:text-gray-400" @if (! $isGroupActive) dir="ltr" style="unicode-bidi:isolate" @endif>
+                                @if ($isGroupActive)
+                                    {{ $this->getActiveGroupId() ?: __('بدون معرف') }}
+                                @else
+                                    {{ $activeContact->phone }}
+                                @endif
+                            </p>
+                        </div>
+
+                        <div class="flex items-center gap-2">
+                            <span
+                                class="hidden items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm sm:inline-flex"
+                                :style="'background-color:' + bridgeHex"
+                            >
+                                <span class="inline-block h-1.5 w-1.5 rounded-full bg-white/85" :class="bridgeCanSend && 'animate-pulse'"></span>
+                                <span x-text="bridgeLabel"></span>
+                            </span>
+
+                            @if ($activeContactUrl)
+                                <a
+                                    href="{{ $activeContactUrl }}"
+                                    class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 text-gray-500 transition hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-600 dark:border-white/10 dark:text-gray-300 dark:hover:border-emerald-500/30 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-200"
+                                    title="{{ __('عرض جهة الاتصال') }}"
+                                >
+                                    <x-filament::icon icon="heroicon-o-user" class="h-4 w-4" />
+                                </a>
+                            @endif
+
+                            @if ($canManageSession)
+                                <a
+                                    href="{{ $sessionUrl }}"
+                                    class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 text-gray-500 transition hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-600 dark:border-white/10 dark:text-gray-300 dark:hover:border-emerald-500/30 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-200"
+                                    title="{{ __('جلسة واتساب') }}"
+                                >
+                                    <x-filament::icon icon="heroicon-o-qr-code" class="h-4 w-4" />
+                                </a>
+                            @endif
+
                             @php
                                 $refreshUrl = $isGroupActive
                                     ? $this->conversationItemUrl(['type' => 'group', 'id' => $this->getActiveGroupId()])
@@ -250,386 +335,423 @@
                             @endphp
                             <a
                                 href="{{ $refreshUrl }}"
-                                class="inline-flex h-8 items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-2.5 text-[12px] font-medium text-gray-700 transition hover:bg-gray-50 dark:border-white/10 dark:bg-white/10 dark:text-white"
+                                class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 text-gray-500 transition hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-600 dark:border-white/10 dark:text-gray-300 dark:hover:border-emerald-500/30 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-200"
+                                title="{{ __('تحديث المحادثة') }}"
                             >
-                                <x-filament::icon icon="heroicon-o-arrow-path" class="h-3.5 w-3.5" />
-                                {{ __('Refresh') }}
+                                <x-filament::icon icon="heroicon-o-arrow-path" class="h-4 w-4" />
                             </a>
-
-                            @if ($canManageSession)
-                                <a
-                                    href="{{ $sessionUrl }}"
-                                    class="inline-flex h-8 items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-2.5 text-[12px] font-medium text-gray-700 transition hover:bg-gray-50 dark:border-white/10 dark:bg-white/10 dark:text-white"
-                                >
-                                    <x-filament::icon icon="heroicon-o-qr-code" class="h-3.5 w-3.5" />
-                                    {{ __('Bridge Session') }}
-                                </a>
-                            @endif
                         </div>
                     </div>
                 </header>
 
-                {{-- Messages timeline --}}
                 <div
-                    x-ref="timeline"
-                    class="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.08),_transparent_45%)] px-3 py-4 sm:px-4"
+                    x-show="!bridgeCanSend"
+                    x-cloak
+                    class="shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-100"
+                >
+                    <div class="flex items-start gap-2">
+                        <x-filament::icon icon="heroicon-o-exclamation-triangle" class="mt-0.5 h-4 w-4 shrink-0" />
+                        <p x-text="bridgeHint"></p>
+                    </div>
+                </div>
+
+                <div
+                    x-ref="thread"
+                    class="wa-thread-bg min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-5"
                 >
                     @if ($errors->any())
-                        <div class="rounded-xl border border-danger-200 bg-danger-50 px-3 py-2.5 text-[13px] text-danger-700 dark:border-danger-500/30 dark:bg-danger-500/10 dark:text-danger-200">
+                        <div class="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-100">
                             {{ $errors->first() }}
                         </div>
                     @endif
 
                     @forelse ($groupedMessages as $group)
-                        <div class="space-y-3">
-                            <div class="flex justify-center">
-                                <span class="rounded-full border border-gray-200 bg-white/90 px-2.5 py-0.5 text-[10px] font-medium text-gray-500 shadow-sm dark:border-white/10 dark:bg-gray-900/80 dark:text-gray-300">
-                                    {{ $group['label'] }}
-                                </span>
-                            </div>
+                        <div class="mb-4 flex justify-center">
+                            <span class="rounded-full bg-white/90 px-3 py-1 text-[11px] font-medium text-gray-500 shadow-sm dark:bg-[#132133] dark:text-gray-300">
+                                {{ $group['label'] }}
+                            </span>
+                        </div>
 
-                            @foreach ($group['messages'] as $message)
-                                @php
-                                    $bubbleClasses = $message->isOutgoing()
-                                        ? 'rounded-2xl rounded-tr-md border-primary-200 bg-primary-50 text-gray-900 dark:border-primary-500/30 dark:bg-primary-500/15 dark:text-white'
-                                        : 'rounded-2xl rounded-tl-md border-gray-200 bg-white text-gray-900 dark:border-white/10 dark:bg-gray-900/70 dark:text-white';
-                                    $mediaUrl = $this->messageMediaUrl($message);
-                                    $mediaAvailable = $this->messageMediaIsAvailable($message);
-                                    $senderName = $this->messageSenderName($message);
-                                @endphp
+                        @foreach ($group['messages'] as $message)
+                            @php
+                                $isOutgoing = $message->isOutgoing();
+                                $mediaUrl = $this->messageMediaUrl($message);
+                                $mediaAvailable = $this->messageMediaIsAvailable($message);
+                                $senderName = $this->messageSenderName($message);
+                                $bubbleClasses = $isOutgoing
+                                    ? 'bg-emerald-100 text-gray-950 dark:bg-emerald-500/15 dark:text-white'
+                                    : 'bg-white text-gray-950 dark:bg-[#132133] dark:text-white';
+                                $timestampClasses = $isOutgoing
+                                    ? 'text-emerald-700/80 dark:text-emerald-200/80'
+                                    : 'text-gray-500 dark:text-gray-400';
+                            @endphp
 
-                                <div class="flex {{ $message->isOutgoing() ? 'justify-end' : 'justify-start' }}">
-                                    <article class="group w-full max-w-[92%] border px-3 py-2.5 shadow-sm sm:w-auto sm:max-w-[65%] {{ $bubbleClasses }}">
-                                        <div class="flex items-start justify-between gap-2">
-                                            <div class="min-w-0">
-                                                {{-- Sender name for group messages --}}
-                                                @if ($senderName)
-                                                    <p class="mb-1 text-[11px] font-semibold {{ $message->isOutgoing() ? 'text-primary-600 dark:text-primary-300' : 'text-emerald-600 dark:text-emerald-300' }}">
-                                                        {{ $senderName }}
-                                                    </p>
-                                                @endif
+                            <div class="mb-3 flex {{ $isOutgoing ? 'justify-start' : 'justify-end' }}">
+                                <article class="max-w-[88%] rounded-[1.4rem] border border-black/5 px-3 py-2 shadow-sm sm:max-w-[72%] {{ $bubbleClasses }}">
+                                    @if ($senderName)
+                                        <p class="mb-1 text-[11px] font-bold text-amber-600 dark:text-amber-300">
+                                            {{ $senderName }}
+                                        </p>
+                                    @endif
 
-                                                @if ($message->body)
-                                                    <p class="whitespace-pre-line text-[13px] leading-5 sm:text-[14px]">
-                                                        {{ $message->body }}
-                                                    </p>
-                                                @endif
-                                            </div>
-
-                                            <p class="shrink-0 pt-0.5 text-[10px] text-gray-500 dark:text-gray-400">
-                                                {{ $this->messageTimestampLabel($message) }}
-                                            </p>
+                                    @if ($message->media_rejected)
+                                        <div class="mb-2 rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-100">
+                                            {{ __('تم رفض الملف') }}: {{ $message->media_reject_reason ?: __('نوع غير مسموح') }}
                                         </div>
-
-                                        @if ($message->media_rejected)
-                                            <div class="mt-2.5 rounded-xl border border-danger-200 bg-danger-50/80 p-2.5 text-[12px] text-danger-700 dark:border-danger-500/30 dark:bg-danger-500/10 dark:text-danger-200">
-                                                <p class="font-medium">{{ __('Media was rejected') }}</p>
-                                                <p class="mt-1">{{ $message->media_reject_reason ?: __('This file type is not allowed.') }}</p>
-                                            </div>
-                                        @elseif ($message->hasMedia())
-                                            <div class="mt-2.5">
-                                                @if ($mediaAvailable && in_array($message->media_type, ['image', 'sticker'], true) && $mediaUrl)
-                                                    <a href="{{ $mediaUrl }}" target="_blank" class="block overflow-hidden rounded-xl border border-gray-200/70 dark:border-white/10">
-                                                        <img
-                                                            src="{{ $mediaUrl }}"
-                                                            alt="{{ $message->media_name ?: __('WhatsApp image') }}"
-                                                            class="max-h-64 max-w-full rounded-xl object-contain"
-                                                            loading="lazy"
-                                                        >
-                                                    </a>
-                                                @elseif ($mediaAvailable && $message->media_type === 'audio' && $mediaUrl)
-                                                    <div class="rounded-xl border border-gray-200/70 bg-white/70 p-2.5 dark:border-white/10 dark:bg-white/5">
-                                                        <audio controls class="w-full">
-                                                            <source src="{{ $mediaUrl }}" type="{{ $message->media_mime }}">
-                                                        </audio>
-                                                    </div>
-                                                @elseif ($mediaAvailable && $message->media_type === 'video' && $mediaUrl)
-                                                    <div class="overflow-hidden rounded-xl border border-gray-200/70 dark:border-white/10">
-                                                        <video controls class="max-h-72 w-full bg-black">
-                                                            <source src="{{ $mediaUrl }}" type="{{ $message->media_mime }}">
-                                                        </video>
-                                                    </div>
-                                                @else
-                                                    <div class="rounded-xl border border-gray-200/70 bg-white/70 p-2.5 dark:border-white/10 dark:bg-white/5">
-                                                        <div class="flex items-center justify-between gap-3">
-                                                            <div class="min-w-0">
-                                                                <p class="truncate text-[13px] font-semibold text-gray-950 dark:text-white">
-                                                                    {{ $message->media_name ?: __('WhatsApp attachment') }}
-                                                                </p>
-                                                                <p class="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">
-                                                                    {{ $message->media_type ?: __('Document') }}
-                                                                    @if ($message->media_size)
-                                                                        . {{ $this->mediaSizeLabel($message->media_size) }}
-                                                                    @endif
-                                                                </p>
-                                                            </div>
-
-                                                            @if ($mediaUrl)
-                                                                <a
-                                                                    href="{{ $mediaUrl }}"
-                                                                    target="_blank"
-                                                                    class="inline-flex h-8 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 text-[11px] font-medium text-gray-700 transition hover:bg-gray-50 dark:border-white/10 dark:bg-white/10 dark:text-white"
-                                                                >
-                                                                    <x-filament::icon icon="heroicon-o-arrow-down-tray" class="h-3.5 w-3.5" />
-                                                                    {{ __('Open') }}
-                                                                </a>
-                                                            @endif
+                                    @elseif ($message->hasMedia())
+                                        <div class="mb-2">
+                                            @if ($mediaAvailable && in_array($message->media_type, ['image', 'sticker'], true) && $mediaUrl)
+                                                <button
+                                                    type="button"
+                                                    class="block overflow-hidden rounded-[1.1rem] border border-black/5"
+                                                    @click="openMedia(@js($mediaUrl), 'image', @js($message->media_name ?: 'صورة واتساب'))"
+                                                >
+                                                    <img
+                                                        src="{{ $mediaUrl }}"
+                                                        alt="{{ $message->media_name ?: __('صورة واتساب') }}"
+                                                        class="max-h-72 w-full object-cover"
+                                                        loading="lazy"
+                                                    >
+                                                </button>
+                                            @elseif ($mediaAvailable && $message->media_type === 'video' && $mediaUrl)
+                                                <button
+                                                    type="button"
+                                                    class="relative block overflow-hidden rounded-[1.1rem] border border-black/5 bg-slate-950"
+                                                    @click="openMedia(@js($mediaUrl), 'video', @js($message->media_name ?: 'فيديو واتساب'))"
+                                                >
+                                                    <video class="max-h-72 w-full object-cover opacity-80" preload="metadata">
+                                                        <source src="{{ $mediaUrl }}" type="{{ $message->media_mime }}">
+                                                    </video>
+                                                    <span class="absolute inset-0 flex items-center justify-center">
+                                                        <span class="inline-flex h-12 w-12 items-center justify-center rounded-full bg-white/90 text-gray-900 shadow-lg">
+                                                            <x-filament::icon icon="heroicon-s-play" class="h-5 w-5" />
+                                                        </span>
+                                                    </span>
+                                                </button>
+                                            @elseif ($mediaAvailable && $message->media_type === 'audio' && $mediaUrl)
+                                                <div class="rounded-[1.1rem] bg-black/5 px-3 py-3 dark:bg-white/5">
+                                                    <audio controls class="h-10 w-full min-w-[240px]">
+                                                        <source src="{{ $mediaUrl }}" type="{{ $message->media_mime }}">
+                                                    </audio>
+                                                </div>
+                                            @else
+                                                <div class="rounded-[1.1rem] border border-black/5 bg-black/5 px-3 py-3 dark:bg-white/5">
+                                                    <div class="flex items-center gap-3">
+                                                        <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-gray-600 shadow-sm dark:bg-white/10 dark:text-white">
+                                                            <x-filament::icon icon="heroicon-o-document" class="h-5 w-5" />
                                                         </div>
 
-                                                        @if (! $mediaAvailable)
-                                                            <p class="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
-                                                                {{ __('This file is not currently available from local storage.') }}
+                                                        <div class="min-w-0 flex-1">
+                                                            <p class="truncate text-sm font-semibold">{{ $message->media_name ?: __('مرفق واتساب') }}</p>
+                                                            <p class="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                                                                {{ $message->media_type ?: __('ملف') }}
+                                                                @if ($message->media_size)
+                                                                    • {{ $this->mediaSizeLabel($message->media_size) }}
+                                                                @endif
                                                             </p>
+                                                        </div>
+
+                                                        @if ($mediaUrl)
+                                                            <a
+                                                                href="{{ $mediaUrl }}"
+                                                                target="_blank"
+                                                                class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-black/5 bg-white text-gray-600 transition hover:text-emerald-600 dark:border-white/10 dark:bg-white/10 dark:text-white dark:hover:text-emerald-200"
+                                                                title="{{ __('تحميل') }}"
+                                                            >
+                                                                <x-filament::icon icon="heroicon-o-arrow-down-tray" class="h-4 w-4" />
+                                                            </a>
                                                         @endif
                                                     </div>
-                                                @endif
-                                            </div>
-                                        @endif
 
-                                        <div class="mt-2.5 flex flex-wrap items-center justify-between gap-2 text-[10px] text-gray-500 dark:text-gray-400">
-                                            <div class="flex flex-wrap items-center gap-2">
-                                                @if ($message->task)
-                                                    <a
-                                                        href="{{ $this->taskUrlForMessage($message) }}"
-                                                        class="inline-flex items-center rounded-full bg-success-100 px-2 py-0.5 text-[10px] font-medium text-success-700 dark:bg-success-500/15 dark:text-success-200"
+                                                    @if (! $mediaAvailable)
+                                                        <p class="mt-2 text-[11px] text-gray-500 dark:text-gray-400">{{ __('الملف غير متوفر حاليًا.') }}</p>
+                                                    @endif
+                                                </div>
+                                            @endif
+                                        </div>
+                                    @endif
+
+                                    @if (filled($message->body))
+                                        <p class="whitespace-pre-line text-[13px] leading-6">
+                                            {{ $message->body }}
+                                        </p>
+                                    @endif
+
+                                    <div class="mt-2 flex items-center justify-between gap-3">
+                                        <div class="flex items-center gap-2">
+                                            @if ($message->task)
+                                                <a
+                                                    href="{{ $this->taskUrlForMessage($message) }}"
+                                                    class="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold text-emerald-700 transition hover:bg-emerald-500/20 dark:text-emerald-200"
+                                                >
+                                                    <x-filament::icon icon="heroicon-o-clipboard-document-check" class="h-3.5 w-3.5" />
+                                                    <span>{{ __('المهمة') }} {{ $message->task->displayNumber() }}</span>
+                                                </a>
+                                            @else
+                                                <a
+                                                    href="{{ $this->taskUrlForMessage($message) }}"
+                                                    class="inline-flex items-center gap-1 rounded-full bg-black/5 px-2.5 py-1 text-[10px] font-medium text-gray-600 transition hover:bg-emerald-500/10 hover:text-emerald-700 dark:bg-white/10 dark:text-gray-300 dark:hover:text-emerald-200"
+                                                >
+                                                    <x-filament::icon icon="heroicon-o-arrow-path-rounded-square" class="h-3.5 w-3.5" />
+                                                    <span>{{ __('تحويل لمهمة') }}</span>
+                                                </a>
+                                            @endif
+
+                                            @if ($isOutgoing && str_starts_with((string) $message->status, 'failed'))
+                                                <form method="POST" action="{{ route('whatsapp.messages.retry', $message) }}">
+                                                    @csrf
+                                                    <button
+                                                        type="submit"
+                                                        class="inline-flex items-center gap-1 rounded-full bg-red-500/10 px-2.5 py-1 text-[10px] font-semibold text-red-700 transition hover:bg-red-500/20 dark:text-red-200"
                                                     >
-                                                        {{ 'المهمة '.$message->task->displayNumber() }}
-                                                    </a>
-                                                @else
-                                                    <a
-                                                        href="{{ $this->taskUrlForMessage($message) }}"
-                                                        class="inline-flex items-center rounded-full border border-gray-200 px-2 py-0.5 text-[10px] font-medium text-gray-700 transition hover:border-primary-300 hover:text-primary-700 dark:border-white/10 dark:text-gray-200 dark:hover:text-primary-200"
-                                                    >
-                                                        {{ 'تحويل لمهمة' }}
-                                                    </a>
-                                                @endif
-
-                                                @if ($message->isOutgoing() && str_starts_with((string) $message->status, 'failed'))
-                                                    <form method="POST" action="{{ route('whatsapp.messages.retry', $message) }}">
-                                                        @csrf
-
-                                                        <button
-                                                            type="submit"
-                                                            class="inline-flex items-center rounded-full border border-danger-200 px-2 py-0.5 text-[10px] font-medium text-danger-700 transition hover:bg-danger-50 dark:border-danger-500/30 dark:text-danger-200 dark:hover:bg-danger-500/10"
-                                                        >
-                                                            {{ __('Retry') }}
-                                                        </button>
-                                                    </form>
-                                                @endif
-                                            </div>
-
-                                            @if ($message->isOutgoing())
-                                                <span>{{ $this->messageStatusLabel($message->status) }}</span>
+                                                        <x-filament::icon icon="heroicon-o-arrow-path" class="h-3.5 w-3.5" />
+                                                        <span>{{ __('إعادة الإرسال') }}</span>
+                                                    </button>
+                                                </form>
                                             @endif
                                         </div>
 
-                                        @if ($message->failed_reason && $message->isOutgoing())
-                                            <p class="mt-1.5 text-[11px] text-danger-600 dark:text-danger-300">
-                                                {{ $message->failed_reason }}
-                                            </p>
-                                        @endif
-                                    </article>
-                                </div>
-                            @endforeach
-                        </div>
+                                        <div class="flex items-center gap-1.5 text-[11px] {{ $timestampClasses }}">
+                                            <span>{{ $this->messageTimestampLabel($message) }}</span>
+                                            @if ($isOutgoing)
+                                                @php
+                                                    $statusIcon = match ($message->status) {
+                                                        'read' => 'text-sky-400',
+                                                        'delivered' => 'text-gray-500 dark:text-gray-300',
+                                                        'sent' => 'text-gray-400 dark:text-gray-300',
+                                                        default => str_starts_with((string) $message->status, 'failed') ? 'text-red-400' : 'text-gray-400 dark:text-gray-300',
+                                                    };
+                                                @endphp
+                                                <svg class="h-3.5 w-3.5 {{ $statusIcon }}" viewBox="0 0 16 15" fill="currentColor" title="{{ $this->messageStatusLabel($message->status) }}">
+                                                    @if (in_array($message->status, ['delivered', 'read']))
+                                                        <path d="M15.01 3.316l-.478-.372a.365.365 0 0 0-.51.063L8.666 9.88a.32.32 0 0 1-.484.033l-.358-.325a.32.32 0 0 0-.484.033l-.378.456a.32.32 0 0 0 .04.456l1.297 1.178a.32.32 0 0 0 .484-.033l6.272-7.94a.366.366 0 0 0-.063-.51z"/>
+                                                        <path d="M10.91 3.316l-.478-.372a.365.365 0 0 0-.51.063L4.566 9.88a.32.32 0 0 1-.484.033L1.89 7.77a.366.366 0 0 0-.516.005l-.423.433a.364.364 0 0 0 .006.514l3.255 3.185a.32.32 0 0 0 .484-.033l6.272-7.94a.366.366 0 0 0-.063-.51z"/>
+                                                    @elseif ($message->status === 'sent')
+                                                        <path d="M10.91 3.316l-.478-.372a.365.365 0 0 0-.51.063L4.566 9.88a.32.32 0 0 1-.484.033L1.89 7.77a.366.366 0 0 0-.516.005l-.423.433a.364.364 0 0 0 .006.514l3.255 3.185a.32.32 0 0 0 .484-.033l6.272-7.94a.366.366 0 0 0-.063-.51z"/>
+                                                    @else
+                                                        <path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm.5 10.5h-1v-1h1v1zm0-2h-1v-5h1v5z"/>
+                                                    @endif
+                                                </svg>
+                                            @endif
+                                        </div>
+                                    </div>
+
+                                    @if ($message->failed_reason && $isOutgoing)
+                                        <p class="mt-2 text-[11px] text-red-600 dark:text-red-200">{{ $message->failed_reason }}</p>
+                                    @endif
+                                </article>
+                            </div>
+                        @endforeach
                     @empty
-                        <div class="flex h-full min-h-[24rem] items-center justify-center">
-                            <div class="rounded-2xl border border-dashed border-gray-300 bg-white/80 p-6 text-center shadow-sm dark:border-white/10 dark:bg-white/5">
-                                <p class="text-[13px] font-medium text-gray-700 dark:text-gray-200">{{ __('No messages yet in this conversation.') }}</p>
+                        <div class="flex h-full items-center justify-center px-6">
+                            <div class="rounded-2xl border border-dashed border-gray-300 bg-white/90 px-5 py-6 text-center text-sm text-gray-500 shadow-sm dark:border-white/10 dark:bg-[#132133] dark:text-gray-300">
+                                {{ __('لا توجد رسائل بعد في هذه المحادثة.') }}
                             </div>
                         </div>
                     @endforelse
                 </div>
 
-                {{-- Footer / Composer --}}
-                <footer class="shrink-0 border-t border-gray-200 bg-white/90 px-3 py-3 backdrop-blur dark:border-white/10 dark:bg-gray-950/70 sm:px-4">
-                    @if ($canSend)
+                <footer class="shrink-0 border-t border-gray-200/80 bg-white/90 px-3 py-3 backdrop-blur dark:border-white/10 dark:bg-[#081320]/92 sm:px-4">
+                    @if ($canSend && $canUseComposer)
                         <form
                             method="POST"
                             action="{{ route('whatsapp.messages.send') }}"
                             enctype="multipart/form-data"
-                            class="space-y-3"
                             @submit="sending = true"
                         >
                             @csrf
 
                             @if ($isGroupActive)
-                                {{-- Group conversation: send to group --}}
                                 <input type="hidden" name="group_id" value="{{ $this->getActiveGroupId() }}">
                                 <input type="hidden" name="group_name" value="{{ $activeGroupName }}">
                                 <input type="hidden" name="phone" value="{{ $this->getGroupSendPhone() }}">
-
-                                <div class="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-200">
-                                    <x-filament::icon icon="heroicon-o-user-group" class="inline h-3.5 w-3.5" />
-                                    {{ __('Sending to group: :group', ['group' => $activeGroupName ?: $this->getActiveGroupId()]) }}
-                                </div>
                             @else
                                 <input type="hidden" name="phone" value="{{ $activeContact->phone }}">
-
                                 @if ($sendToSameGroup && $replyGroup)
                                     <input type="hidden" name="group_id" value="{{ $replyGroup['group_id'] }}">
                                     <input type="hidden" name="group_name" value="{{ $replyGroup['group_name'] }}">
-
-                                    <div class="rounded-xl border border-primary-200 bg-primary-50 px-3 py-2 text-[11px] text-primary-700 dark:border-primary-500/20 dark:bg-primary-500/10 dark:text-primary-200">
-                                        {{ __('Replies from this chat will be sent to the same WhatsApp group: :group', ['group' => $replyGroup['group_name'] ?: $replyGroup['group_id']]) }}
-                                    </div>
                                 @endif
                             @endif
 
-                            <div class="rounded-2xl border border-gray-200 bg-gray-50 p-2.5 dark:border-white/10 dark:bg-white/5">
-                                <textarea
-                                    x-ref="composer"
-                                    name="body"
-                                    rows="1"
-                                    placeholder="{{ __('Type a message') }}"
-                                    class="max-h-40 min-h-[40px] w-full resize-none border-0 bg-transparent px-1.5 py-1.5 text-[13px] text-gray-900 outline-none placeholder:text-gray-400 focus:ring-0 dark:text-white"
-                                    @input="resize($event.target)"
-                                    @keydown.enter="submitOnEnter($event)"
-                                >{{ old('body') }}</textarea>
+                            @if ($isGroupActive)
+                                <div class="mb-2 rounded-2xl bg-emerald-50 px-3 py-2 text-[11px] text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200">
+                                    {{ __('الإرسال سيتم إلى المجموعة الحالية:') }} {{ $activeGroupName ?: $this->getActiveGroupId() }}
+                                </div>
+                            @elseif ($sendToSameGroup && $replyGroup)
+                                <div class="mb-2 rounded-2xl bg-sky-50 px-3 py-2 text-[11px] text-sky-700 dark:bg-sky-500/10 dark:text-sky-200">
+                                    {{ __('الرد سيعود إلى المجموعة:') }} {{ $replyGroup['group_name'] ?: $replyGroup['group_id'] }}
+                                </div>
+                            @endif
 
-                                <div
-                                    x-data="{
-                                        fileName: null,
-                                        fileSize: null,
-                                        fileType: null,
-                                        previewUrl: null,
-                                        pickFile() {
-                                            this.$refs.fileInput.click();
-                                        },
-                                        onFileChange(event) {
-                                            const file = event.target.files[0];
-                                            if (!file) {
-                                                this.clearFile();
-                                                return;
-                                            }
-                                            this.fileName = file.name;
-                                            this.fileSize = this.formatSize(file.size);
-                                            this.fileType = file.type;
-
-                                            if (this.previewUrl) {
-                                                URL.revokeObjectURL(this.previewUrl);
-                                                this.previewUrl = null;
-                                            }
-                                            if (file.type.startsWith('image/')) {
-                                                this.previewUrl = URL.createObjectURL(file);
-                                            }
-                                        },
-                                        clearFile() {
-                                            this.fileName = null;
-                                            this.fileSize = null;
-                                            this.fileType = null;
-                                            if (this.previewUrl) {
-                                                URL.revokeObjectURL(this.previewUrl);
-                                                this.previewUrl = null;
-                                            }
-                                            this.$refs.fileInput.value = '';
-                                        },
-                                        formatSize(bytes) {
-                                            if (bytes < 1024) return bytes + ' B';
-                                            if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
-                                            return (bytes / 1048576).toFixed(1) + ' MB';
-                                        },
-                                        fileIcon() {
-                                            if (!this.fileType) return 'document';
-                                            if (this.fileType.startsWith('image/')) return 'photo';
-                                            if (this.fileType.startsWith('video/')) return 'film';
-                                            if (this.fileType.startsWith('audio/')) return 'musical-note';
-                                            return 'document';
+                            <div
+                                x-data="{
+                                    fileName: null,
+                                    fileSize: null,
+                                    previewUrl: null,
+                                    pickFile() { this.$refs.fileInput.click(); },
+                                    onFileChange(event) {
+                                        const file = event.target.files[0];
+                                        if (!file) {
+                                            this.clearFile();
+                                            return;
                                         }
-                                    }"
-                                    class="mt-2.5 space-y-2.5 border-t border-gray-200 pt-2.5 dark:border-white/10"
+
+                                        this.fileName = file.name;
+                                        this.fileSize = file.size < 1048576
+                                            ? (file.size / 1024).toFixed(0) + ' KB'
+                                            : (file.size / 1048576).toFixed(1) + ' MB';
+
+                                        if (this.previewUrl) {
+                                            URL.revokeObjectURL(this.previewUrl);
+                                        }
+
+                                        this.previewUrl = file.type.startsWith('image/')
+                                            ? URL.createObjectURL(file)
+                                            : null;
+                                    },
+                                    clearFile() {
+                                        this.fileName = null;
+                                        this.fileSize = null;
+
+                                        if (this.previewUrl) {
+                                            URL.revokeObjectURL(this.previewUrl);
+                                            this.previewUrl = null;
+                                        }
+
+                                        this.$refs.fileInput.value = '';
+                                    }
+                                }"
+                            >
+                                <div
+                                    x-show="fileName"
+                                    x-cloak
+                                    x-transition
+                                    class="mb-2 flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/80 px-3 py-2 dark:border-emerald-500/20 dark:bg-emerald-500/10"
                                 >
-                                    {{-- Attachment preview --}}
-                                    <div
-                                        x-show="fileName"
-                                        x-cloak
-                                        x-transition:enter="transition ease-out duration-150"
-                                        x-transition:enter-start="opacity-0 -translate-y-1"
-                                        x-transition:enter-end="opacity-100 translate-y-0"
-                                        class="flex items-start gap-2.5 rounded-xl border border-primary-200 bg-primary-50/80 p-2.5 dark:border-primary-500/25 dark:bg-primary-500/10"
+                                    <div x-show="previewUrl" class="shrink-0 overflow-hidden rounded-2xl">
+                                        <img :src="previewUrl" alt="" class="h-12 w-12 object-cover">
+                                    </div>
+
+                                    <div x-show="!previewUrl" class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white text-emerald-600 shadow-sm dark:bg-white/10 dark:text-emerald-200">
+                                        <x-filament::icon icon="heroicon-o-document" class="h-5 w-5" />
+                                    </div>
+
+                                    <div class="min-w-0 flex-1">
+                                        <p class="truncate text-sm font-semibold text-gray-900 dark:text-white" x-text="fileName"></p>
+                                        <p class="mt-1 text-[11px] text-gray-500 dark:text-gray-400" x-text="fileSize"></p>
+                                    </div>
+
+                                    <button
+                                        type="button"
+                                        @click="clearFile()"
+                                        class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-red-200 text-red-500 transition hover:bg-red-50 dark:border-red-500/20 dark:hover:bg-red-500/10"
                                     >
-                                        {{-- Image thumbnail --}}
-                                        <div
-                                            x-show="previewUrl"
-                                            class="shrink-0 overflow-hidden rounded-lg border border-primary-200/60 dark:border-primary-500/20"
-                                        >
-                                            <img :src="previewUrl" alt="" class="h-14 w-14 object-cover">
-                                        </div>
+                                        <x-filament::icon icon="heroicon-o-x-mark" class="h-4 w-4" />
+                                    </button>
+                                </div>
 
-                                        {{-- File icon (for non-image files) --}}
-                                        <div
-                                            x-show="!previewUrl"
-                                            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-100 dark:bg-primary-500/20"
-                                        >
-                                            <svg x-show="fileIcon() === 'document'" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-primary-600 dark:text-primary-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
-                                            <svg x-show="fileIcon() === 'film'" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-primary-600 dark:text-primary-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="m15.75 10.5 4.72-4.72a.75.75 0 0 1 1.28.53v11.38a.75.75 0 0 1-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 0 0 2.25-2.25v-9a2.25 2.25 0 0 0-2.25-2.25h-9A2.25 2.25 0 0 0 2.25 7.5v9a2.25 2.25 0 0 0 2.25 2.25Z" /></svg>
-                                            <svg x-show="fileIcon() === 'musical-note'" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-primary-600 dark:text-primary-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="m9 9 10.5-3m0 6.553v3.75a2.25 2.25 0 0 1-1.632 2.163l-1.32.377a1.803 1.803 0 1 1-.99-3.467l2.31-.66a2.25 2.25 0 0 0 1.632-2.163Zm0 0V2.25L9 5.25v10.303m0 0v3.75a2.25 2.25 0 0 1-1.632 2.163l-1.32.377a1.803 1.803 0 0 1-.99-3.467l2.31-.66A2.25 2.25 0 0 0 9 15.553Z" /></svg>
-                                        </div>
+                                <div class="flex items-end gap-2">
+                                    <button
+                                        type="button"
+                                        @click="pickFile()"
+                                        class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 transition hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-600 dark:border-white/10 dark:bg-white/10 dark:text-gray-300 dark:hover:border-emerald-500/30 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-200"
+                                        title="{{ __('رفع مرفق') }}"
+                                    >
+                                        <x-filament::icon icon="heroicon-o-paper-clip" class="h-5 w-5" />
+                                    </button>
 
-                                        {{-- File info --}}
-                                        <div class="min-w-0 flex-1">
-                                            <p class="truncate text-[12px] font-semibold text-primary-800 dark:text-primary-100" x-text="fileName"></p>
-                                            <p class="mt-0.5 text-[11px] text-primary-600 dark:text-primary-300" x-text="fileSize"></p>
-                                        </div>
+                                    <input
+                                        x-ref="fileInput"
+                                        type="file"
+                                        name="attachment"
+                                        class="hidden"
+                                        accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,audio/mpeg,audio/ogg,audio/webm,audio/mp4,video/mp4,video/webm"
+                                        @change="onFileChange($event)"
+                                    >
 
-                                        {{-- Remove button --}}
-                                        <button
-                                            type="button"
-                                            @click="clearFile()"
-                                            class="shrink-0 rounded-lg p-1 text-primary-400 transition hover:bg-primary-100 hover:text-primary-700 dark:hover:bg-primary-500/20 dark:hover:text-primary-100"
-                                            title="{{ __('Remove attachment') }}"
-                                        >
-                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
-                                        </button>
+                                    <div class="min-w-0 flex-1 rounded-[1.4rem] border border-gray-200 bg-gray-50 px-3 py-2 dark:border-white/10 dark:bg-white/5">
+                                        <textarea
+                                            x-ref="composer"
+                                            name="body"
+                                            rows="1"
+                                            placeholder="{{ __('اكتب رسالتك أو أرفق صورة / ملف') }}"
+                                            class="max-h-[130px] min-h-[38px] w-full resize-none border-0 bg-transparent p-0 text-[13px] text-gray-900 outline-none focus:ring-0 dark:text-white"
+                                            @input="resize($event.target)"
+                                            @keydown.enter="submitOnEnter($event)"
+                                        >{{ old('body') }}</textarea>
                                     </div>
 
-                                    {{-- Actions row --}}
-                                    <div class="flex flex-wrap items-center justify-between gap-2.5">
-                                        <button
-                                            type="button"
-                                            @click="pickFile()"
-                                            class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-2.5 text-[12px] font-medium text-gray-700 transition hover:bg-gray-50 dark:border-white/10 dark:bg-white/10 dark:text-white"
-                                        >
-                                            <x-filament::icon icon="heroicon-o-paper-clip" class="h-3.5 w-3.5" />
-                                            <span x-text="fileName ? '{{ __('Change file') }}' : '{{ __('Attach file') }}'"></span>
-                                        </button>
-
-                                        <input
-                                            x-ref="fileInput"
-                                            type="file"
-                                            name="attachment"
-                                            class="hidden"
-                                            accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,audio/mpeg,audio/ogg,audio/webm,audio/mp4,video/mp4,video/webm"
-                                            @change="onFileChange($event)"
-                                        >
-
-                                        <button
-                                            type="submit"
-                                            class="inline-flex h-9 items-center gap-1.5 rounded-xl bg-primary-600 px-3 text-[12px] font-semibold text-white transition hover:bg-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
-                                            :disabled="sending"
-                                        >
-                                            <x-filament::icon icon="heroicon-o-paper-airplane" class="h-3.5 w-3.5" />
-                                            <span x-show="!sending">{{ __('Send') }}</span>
-                                            <span x-show="sending">{{ __('Sending...') }}</span>
-                                        </button>
-                                    </div>
+                                    <button
+                                        type="submit"
+                                        class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white shadow-sm transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+                                        :disabled="sending"
+                                        title="{{ __('إرسال') }}"
+                                    >
+                                        <svg x-show="!sending" class="h-5 w-5 rotate-180" fill="currentColor" viewBox="0 0 24 24"><path d="M1.101 21.757 23.8 12.028 1.101 2.3l.011 7.912 13.623 1.816-13.623 1.817-.011 7.912z"/></svg>
+                                        <svg x-show="sending" x-cloak class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                                    </button>
                                 </div>
                             </div>
                         </form>
+                    @elseif (! $canSend)
+                        <div class="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-4 py-3 text-sm text-gray-500 dark:border-white/10 dark:bg-white/5 dark:text-gray-400">
+                            {{ __('ليس لديك صلاحية إرسال رسائل واتساب من هذه الصفحة.') }}
+                        </div>
                     @else
-                        <div class="rounded-xl border border-dashed border-gray-300 bg-gray-50 px-3 py-2.5 text-[13px] text-gray-500 dark:border-white/10 dark:bg-white/5 dark:text-gray-400">
-                            {{ __('You do not have permission to send WhatsApp messages from this inbox.') }}
+                        <div class="rounded-2xl border border-dashed border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-100">
+                            {{ $bridgeStatus['status_hint'] ?? __('إرسال واتساب غير متاح من خلال البريدج الحالي.') }}
                         </div>
                     @endif
                 </footer>
             @else
-                <div class="flex min-h-0 flex-1 items-center justify-center px-6">
-                    <div class="max-w-md rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-6 text-center dark:border-white/10 dark:bg-white/5">
-                        <p class="text-[13px] font-semibold text-gray-700 dark:text-gray-200">{{ __('Choose a conversation to view the chat thread.') }}</p>
-                        <p class="mt-1.5 text-[13px] text-gray-500 dark:text-gray-400">{{ __('The inbox keeps the existing WhatsApp records and now displays them in a conversation-first layout.') }}</p>
+                <div class="flex h-full items-center justify-center px-6">
+                    <div class="max-w-md rounded-[1.75rem] border border-dashed border-gray-300 bg-white/90 px-6 py-8 text-center shadow-sm dark:border-white/10 dark:bg-[#101d2d]">
+                        <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-200">
+                            <x-filament::icon icon="heroicon-o-chat-bubble-left-right" class="h-8 w-8" />
+                        </div>
+                        <h3 class="mt-4 text-lg font-semibold text-gray-950 dark:text-white">{{ __('اختر محادثة لبدء المتابعة') }}</h3>
+                        <p class="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">{{ __('ستظهر الرسائل والوسائط وسجل التحويل إلى مهام داخل نفس الشاشة بدون الانتقال بين صفحات متعددة.') }}</p>
                     </div>
                 </div>
             @endif
-        </section>
+        </main>
+
+        <div
+            x-show="lightboxOpen"
+            x-cloak
+            x-transition.opacity
+            class="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 py-6"
+            @click.self="closeMedia()"
+            @keydown.escape.window="closeMedia()"
+        >
+            <div class="w-full max-w-5xl overflow-hidden rounded-[1.75rem] bg-white shadow-2xl dark:bg-[#081320]">
+                <div class="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 dark:border-white/10">
+                    <div class="min-w-0">
+                        <p class="truncate text-sm font-semibold text-gray-950 dark:text-white" x-text="lightboxName || '{{ __('معاينة الوسيط') }}'"></p>
+                        <p class="mt-1 text-[11px] text-gray-500 dark:text-gray-400" x-text="lightboxType === 'video' ? '{{ __('فيديو') }}' : '{{ __('صورة') }}'"></p>
+                    </div>
+
+                    <button
+                        type="button"
+                        class="inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 text-gray-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:border-white/10 dark:text-gray-300 dark:hover:border-red-500/20 dark:hover:bg-red-500/10 dark:hover:text-red-200"
+                        @click="closeMedia()"
+                    >
+                        <x-filament::icon icon="heroicon-o-x-mark" class="h-5 w-5" />
+                    </button>
+                </div>
+
+                <div class="max-h-[80vh] overflow-auto bg-slate-950 p-3">
+                    <template x-if="lightboxType === 'video'">
+                        <video controls class="mx-auto max-h-[74vh] w-full rounded-2xl bg-black">
+                            <source :src="lightboxUrl">
+                        </video>
+                    </template>
+
+                    <template x-if="lightboxType !== 'video'">
+                        <img :src="lightboxUrl" alt="" class="mx-auto max-h-[74vh] rounded-2xl object-contain">
+                    </template>
+                </div>
+            </div>
+        </div>
     </div>
 </x-filament-panels::page>

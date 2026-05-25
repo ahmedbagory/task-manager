@@ -46,6 +46,12 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/attachments/{attachment}/download', [MyTaskWorkspaceController::class, 'downloadAnyAttachment'])
         ->name('attachments.download');
 
+    Route::get('/whatsapp/bridge-status', function () {
+        return response()->json(
+            app(\App\Services\WhatsApp\WhatsappBridgeStatusService::class)->current()
+        );
+    })->name('whatsapp.bridge-status');
+
     Route::middleware('throttle:30,1')->group(function (): void {
         Route::post('/whatsapp/messages/send', [WhatsappConversationController::class, 'send'])
             ->name('whatsapp.messages.send');

@@ -42,9 +42,7 @@ class WhatsappContactResource extends Resource
 
     public static function getRelations(): array
     {
-        return [
-            //
-        ];
+        return [];
     }
 
     public static function getPages(): array
@@ -59,21 +57,21 @@ class WhatsappContactResource extends Resource
 
     public static function getModelLabel(): string
     {
-        return __('WhatsApp Contact');
+        return 'جهة اتصال واتساب';
     }
 
     public static function getPluralModelLabel(): string
     {
-        return __('WhatsApp Contacts');
+        return 'جهات اتصال واتساب';
     }
 
     public static function getNavigationLabel(): string
     {
-        return __('WhatsApp Contacts');
+        return 'جهات اتصال واتساب';
     }
 
     public static function getNavigationGroup(): string|UnitEnum|null
     {
-        return __('Task Management');
+        return __('واتساب');
     }
 }
