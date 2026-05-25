@@ -74,72 +74,154 @@ class WhatsappPagesRenderTest extends TestCase
             ->get(WhatsAppSession::getUrl())
             ->assertOk()
             ->assertSee('جلسة واتساب')
-            ->assertSee('يحتاج QR');
+            ->assertSee('يحتاج QR')
+            ->assertSee('إعادة تشغيل البريدج')
+            ->assertSee('إعادة الربط / Reconnect');
     }
 
-    private function fakeWhatsappUiDependencies(): void
+    public function test_admin_can_still_see_restart_bridge_and_qr_shortcut_when_session_is_connected(): void
     {
+        app(RbacInitializationService::class)->seed();
+
+        $admin = User::factory()->create();
+        $admin->assignRole(Rbac::ADMIN);
+
+        $this->fakeWhatsappUiDependencies([
+            'status' => [
+                'state' => 'ready',
+                'label' => 'متصل',
+                'badge' => 'success',
+                'status_hint' => 'الجلسة جاهزة لإرسال الرسائل واستقبالها.',
+                'can_send' => true,
+                'can_queue' => false,
+                'account_id' => '201234567890',
+                'account_name' => 'Main Session',
+                'qr_available' => true,
+            ],
+            'qr' => [
+                'qr' => 'data:image/png;base64,abc123',
+            ],
+        ]);
+
+        $this->actingAs($admin)
+            ->get(WhatsAppSession::getUrl())
+            ->assertOk()
+            ->assertSee('متصل')
+            ->assertSee('إعادة تشغيل البريدج')
+            ->assertSee('إعادة الربط / Reconnect')
+            ->assertSee('عرض QR');
+    }
+
+    /**
+     * @param  array{
+     *     status?: array<string, mixed>,
+     *     qr?: array<string, mixed>,
+     *     diagnostics?: array<string, mixed>,
+     *     logs?: array{output:string,error:string}
+     * }  $overrides
+     */
+    private function fakeWhatsappUiDependencies(array $overrides = []): void
+    {
+        $status = array_replace([
+            'state' => 'qr_required',
+            'label' => 'يحتاج QR',
+            'badge' => 'warning',
+            'hex' => '#f59e0b',
+            'status_hint' => 'يجب مسح QR قبل الإرسال.',
+            'supports_bridge' => true,
+            'outbound_enabled' => true,
+            'can_send' => false,
+            'can_queue' => true,
+            'account_id' => null,
+            'account_name' => null,
+            'group_name' => null,
+            'groups_count' => 0,
+            'qr_available' => false,
+            'last_heartbeat_at' => null,
+            'last_message_at' => null,
+            'pm2_status' => 'online',
+            'pm2_found' => true,
+            'auth_exists' => true,
+            'restart_requested' => false,
+        ], $overrides['status'] ?? []);
+
+        $qr = array_replace([
+            'qr' => null,
+        ], $overrides['qr'] ?? []);
+
+        $diagnostics = array_replace([
+            'pm2_found' => true,
+            'pm2_bin' => '/usr/bin/pm2',
+            'node_version' => 'v20.0.0',
+            'bridge_status' => 'online',
+            'restart_count' => 0,
+            'uptime' => '5m 0s',
+            'memory' => '55 MB',
+            'auth_exists' => true,
+            'pid' => 1234,
+        ], $overrides['diagnostics'] ?? []);
+
+        $logs = array_replace([
+            'output' => 'bridge started',
+            'error' => '',
+        ], $overrides['logs'] ?? []);
+
         app()->instance(WhatsappBridgeStatusService::class, new class
+            ($status)
         {
+            /**
+             * @param  array<string, mixed>  $status
+             */
+            public function __construct(
+                private readonly array $status,
+            ) {}
+
             /**
              * @return array<string, mixed>
              */
             public function current(): array
             {
-                return [
-                    'state' => 'qr_required',
-                    'label' => 'يحتاج QR',
-                    'badge' => 'warning',
-                    'hex' => '#f59e0b',
-                    'status_hint' => 'يجب مسح QR قبل الإرسال.',
-                    'supports_bridge' => true,
-                    'outbound_enabled' => true,
-                    'can_send' => false,
-                    'can_queue' => true,
-                    'account_id' => null,
-                    'account_name' => null,
-                    'group_name' => null,
-                    'groups_count' => 0,
-                    'qr_available' => false,
-                    'last_heartbeat_at' => null,
-                    'last_message_at' => null,
-                    'pm2_status' => 'online',
-                    'pm2_found' => true,
-                    'auth_exists' => true,
-                    'restart_requested' => false,
-                ];
+                return $this->status;
             }
         });
 
         app()->instance(BridgeApiClient::class, new class
+            ($qr)
         {
+            /**
+             * @param  array<string, mixed>  $qr
+             */
+            public function __construct(
+                private readonly array $qr,
+            ) {}
+
             /**
              * @return array<string, mixed>
              */
             public function getQr(): array
             {
-                return ['qr' => null];
+                return $this->qr;
             }
         });
 
         app()->instance(WhatsappBridgeProcessService::class, new class
+            ($diagnostics, $logs)
         {
+            /**
+             * @param  array<string, mixed>  $diagnostics
+             * @param  array{output:string,error:string}  $logs
+             */
+            public function __construct(
+                private readonly array $diagnostics,
+                private readonly array $logs,
+            ) {}
+
             /**
              * @return array<string, mixed>
              */
             public function getDiagnostics(): array
             {
-                return [
-                    'pm2_found' => true,
-                    'pm2_bin' => '/usr/bin/pm2',
-                    'node_version' => 'v20.0.0',
-                    'bridge_status' => 'online',
-                    'restart_count' => 0,
-                    'uptime' => '5m 0s',
-                    'memory' => '55 MB',
-                    'auth_exists' => true,
-                    'pid' => 1234,
-                ];
+                return $this->diagnostics;
             }
 
             /**
@@ -147,10 +229,7 @@ class WhatsappPagesRenderTest extends TestCase
              */
             public function getLogs(int $lines = 0): array
             {
-                return [
-                    'output' => 'bridge started',
-                    'error' => '',
-                ];
+                return $this->logs;
             }
         });
     }

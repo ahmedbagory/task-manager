@@ -23,16 +23,55 @@
                                 <h3 class="text-xl font-semibold text-gray-950 dark:text-white">{{ $this->currentLabel() }}</h3>
                             </div>
 
-                            <div class="flex flex-wrap items-center gap-2">
-                                <x-filament::badge :color="$this->currentBadge()">
-                                    {{ strtoupper((string) ($status['pm2_status'] ?? 'unknown')) }}
-                                </x-filament::badge>
-
-                                @if (($status['restart_requested'] ?? false) === true)
-                                    <x-filament::badge color="warning">
-                                        {{ __('إعادة تشغيل مطلوبة') }}
+                            <div class="flex max-w-full flex-col items-start gap-3 sm:items-end">
+                                <div class="flex flex-wrap items-center gap-2 sm:justify-end">
+                                    <x-filament::badge :color="$this->currentBadge()">
+                                        {{ strtoupper((string) ($status['pm2_status'] ?? 'unknown')) }}
                                     </x-filament::badge>
-                                @endif
+
+                                    @if (($status['restart_requested'] ?? false) === true)
+                                        <x-filament::badge color="warning">
+                                            {{ __('إعادة تشغيل مطلوبة') }}
+                                        </x-filament::badge>
+                                    @endif
+                                </div>
+
+                                <div class="flex flex-wrap items-center gap-2 sm:justify-end">
+                                    <x-filament::button
+                                        color="warning"
+                                        icon="heroicon-o-arrow-path"
+                                        outlined
+                                        size="sm"
+                                        type="button"
+                                        wire:click="mountAction('restartBridge')"
+                                    >
+                                        {{ __('إعادة تشغيل البريدج') }}
+                                    </x-filament::button>
+
+                                    <x-filament::button
+                                        color="info"
+                                        icon="heroicon-o-qr-code"
+                                        outlined
+                                        size="sm"
+                                        type="button"
+                                        wire:click="mountAction('reconnectQr')"
+                                    >
+                                        {{ __('إعادة الربط / Reconnect') }}
+                                    </x-filament::button>
+
+                                    @if ($this->canShowQr())
+                                        <x-filament::button
+                                            color="gray"
+                                            icon="heroicon-o-eye"
+                                            outlined
+                                            size="sm"
+                                            tag="a"
+                                            href="#whatsapp-session-qr"
+                                        >
+                                            {{ __('عرض QR') }}
+                                        </x-filament::button>
+                                    @endif
+                                </div>
                             </div>
                         </div>
 
@@ -50,7 +89,7 @@
                         </dl>
                     </div>
 
-                    <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-white/5">
+                    <div id="whatsapp-session-qr" class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-white/5">
                         <div class="flex flex-wrap items-center justify-between gap-3">
                             <div>
                                 <h3 class="text-sm font-semibold text-gray-950 dark:text-white">{{ __('تشخيص العملية') }}</h3>

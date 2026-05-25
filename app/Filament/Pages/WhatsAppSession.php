@@ -113,10 +113,9 @@ class WhatsAppSession extends Page
                 }),
 
             Action::make('restartBridge')
-                ->label(__('إعادة تشغيل'))
+                ->label(__('إعادة تشغيل البريدج'))
                 ->icon(Heroicon::OutlinedArrowPath)
                 ->color('warning')
-                ->visible(fn (): bool => in_array($this->currentState(), ['stopped', 'error', 'disconnected'], true))
                 ->requiresConfirmation()
                 ->modalHeading(__('إعادة تشغيل بريدج واتساب'))
                 ->modalDescription(__('سيتم إعادة تشغيل عملية البريدج دون حذف الجلسة الحالية.'))
@@ -163,10 +162,9 @@ class WhatsAppSession extends Page
                 }),
 
             Action::make('reconnectQr')
-                ->label(__('إعادة ربط / QR'))
+                ->label(__('إعادة الربط / Reconnect'))
                 ->icon(Heroicon::OutlinedQrCode)
                 ->color('info')
-                ->visible(fn (): bool => in_array($this->currentState(), ['qr_required', 'starting', 'disconnected', 'error', 'stopped'], true))
                 ->requiresConfirmation()
                 ->modalHeading(__('إعادة الربط أو إظهار QR'))
                 ->modalDescription(__('سيتم إعادة تشغيل البريدج ومحاولة إظهار QR جديد إذا كانت الجلسة تحتاج ربطًا.'))
