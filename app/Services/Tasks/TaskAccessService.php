@@ -223,12 +223,23 @@ class TaskAccessService
             return 'admin';
         }
 
-        if ($this->isReporter($user, $task)) {
-            return 'reporter';
+        $isReporter = $this->isReporter($user, $task);
+        $isAssignee = $this->isAssignee($user, $task);
+
+        if ($isReporter && $isAssignee) {
+            return 'assignee_and_requester';
         }
 
-        if ($this->isAssignee($user, $task)) {
+        if ($isAssignee) {
             return 'assignee';
+        }
+
+        if ($isReporter) {
+            return 'requester';
+        }
+
+        if ($task->created_by === $user->id) {
+            return 'creator';
         }
 
         return 'viewer';
@@ -246,16 +257,20 @@ class TaskAccessService
         $status = $task->workflowStatus();
         $role = $this->resolveCurrentUserRole($task, $user);
         $assignment = $this->resolveUserAssignment($task, $user);
-        $canReporterConfirm = $status === TaskStatus::AWAITING_REPORTER_CONFIRMATION
-            && in_array($role, ['reporter', 'admin'], true);
+
+        $hasAssigneeRole = in_array($role, ['assignee', 'assignee_and_requester', 'admin'], true);
+        $hasRequesterRole = in_array($role, ['requester', 'assignee_and_requester', 'admin'], true);
+        $canCollaborate = in_array($role, ['admin', 'assignee', 'requester', 'assignee_and_requester', 'creator'], true);
+
+        $canReporterConfirm = $status === TaskStatus::AWAITING_REPORTER_CONFIRMATION && $hasRequesterRole;
 
         return [
-            'can_comment' => in_array($role, ['admin', 'assignee', 'reporter'], true),
-            'can_upload' => in_array($role, ['admin', 'assignee', 'reporter'], true),
-            'can_mark_resolved' => ($role === 'assignee')
+            'can_comment' => $canCollaborate,
+            'can_upload' => $canCollaborate,
+            'can_mark_resolved' => $hasAssigneeRole
                 && $assignment !== null
                 && $assignment->status === TaskAssignmentStatus::ACCEPTED
-                && in_array($status, [TaskStatus::IN_PROGRESS, TaskStatus::WAIT_RESPONSE], true),
+                && in_array($status, [TaskStatus::IN_PROGRESS, TaskStatus::WAIT_RESPONSE, TaskStatus::REOPENED], true),
             'can_confirm_resolution' => $canReporterConfirm,
             'can_reject_resolution' => $canReporterConfirm,
             'can_reassign' => $role === 'admin' && ($user->can('assign', $task) || $user->can('tasks.reassign')),
@@ -263,16 +278,16 @@ class TaskAccessService
             'can_edit' => $user->can('update', $task),
             'can_delete' => $user->can('delete', $task),
             'can_accept' => $this->canAcceptTask($task, $user),
-            'can_start' => ($role === 'assignee')
+            'can_start' => $hasAssigneeRole
                 && $assignment?->status === TaskAssignmentStatus::ACCEPTED
-                && $status === TaskStatus::ACCEPTED,
-            'can_wait_response' => ($role === 'assignee')
+                && in_array($status, [TaskStatus::ACCEPTED, TaskStatus::REOPENED], true),
+            'can_wait_response' => $hasAssigneeRole
                 && $assignment?->status === TaskAssignmentStatus::ACCEPTED
-                && $status === TaskStatus::IN_PROGRESS,
-            'can_resume' => ($role === 'assignee')
+                && in_array($status, [TaskStatus::IN_PROGRESS, TaskStatus::REOPENED], true),
+            'can_resume' => $hasAssigneeRole
                 && $assignment?->status === TaskAssignmentStatus::ACCEPTED
                 && $status === TaskStatus::WAIT_RESPONSE,
-            'can_reject_assignment' => ($role === 'assignee')
+            'can_reject_assignment' => $hasAssigneeRole
                 && ($assignment !== null || $this->canAcceptTask($task, $user)),
         ];
     }

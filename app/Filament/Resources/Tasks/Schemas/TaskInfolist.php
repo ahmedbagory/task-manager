@@ -20,13 +20,14 @@ class TaskInfolist
     {
         return $schema
             ->components([
-                Section::make(__('Task'))
+                Section::make('المهمة')
                     ->components([
                         TextEntry::make('task_number')
-                            ->label(__('Task #'))
+                            ->label('رقم المهمة')
+                            ->formatStateUsing(fn ($state, Task $record): string => $record->displayNumber())
                             ->copyable(),
                         TextEntry::make('title')
-                            ->label(__('Title')),
+                            ->label('العنوان'),
                         TextEntry::make('status')
                             ->badge()
                             ->formatStateUsing(fn ($state, Task $record): string => $record->workflowStatusLabel())
@@ -40,39 +41,39 @@ class TaskInfolist
                             ->formatStateUsing(fn (TaskSource|string $state): string => ($state instanceof TaskSource ? $state : TaskSource::from((string) $state))->label())
                             ->color(fn (TaskSource|string $state): string => ($state instanceof TaskSource ? $state : TaskSource::from((string) $state))->color()),
                         TextEntry::make('description')
-                            ->label(__('Description'))
+                            ->label('الوصف')
                             ->placeholder('-')
                             ->columnSpanFull(),
                     ])
                     ->columns(3),
-                Section::make(__('Assignment & Classification'))
+                Section::make('الإسناد والتصنيف')
                     ->components([
                         TextEntry::make('department.hierarchy_name')
                             ->label('القسم / الوحدة')
                             ->placeholder('-'),
                         TextEntry::make('category.name')
-                            ->label(__('Category'))
+                            ->label('التصنيف')
                             ->placeholder('-'),
                         TextEntry::make('assignees_summary')
-                            ->label(__('Assigned Employees'))
+                            ->label('المكلفين')
                             ->state(fn (Task $record): string => app(TaskAccessService::class)
                                 ->resolveAssignees($record)
                                 ->pluck('name')
                                 ->implode('، ') ?: '—')
                             ->placeholder('-'),
                         TextEntry::make('location')
-                            ->label(__('Location'))
+                            ->label('الموقع')
                             ->placeholder('-'),
                         TextEntry::make('due_at')
-                            ->label(__('Due At'))
+                            ->label('تاريخ الاستحقاق')
                             ->dateTime()
                             ->placeholder('-'),
                         TextEntry::make('started_at')
-                            ->label(__('Started At'))
+                            ->label('تاريخ البدء')
                             ->dateTime()
                             ->placeholder('-'),
                         TextEntry::make('completed_at')
-                            ->label(__('Completed At'))
+                            ->label('تاريخ الإكمال')
                             ->dateTime()
                             ->placeholder('-'),
                     ])
@@ -142,13 +143,10 @@ class TaskInfolist
                     ])
                     ->visible(fn ($record) => $record->assignmentHistories()->exists())
                     ->collapsible(),
-                Section::make(__('Audit'))
+                Section::make('التتبع')
                     ->components([
-                        TextEntry::make('reportedByUser.name')
-                            ->label(__('Reported by user'))
-                            ->placeholder('-'),
                         TextEntry::make('reporter_summary')
-                            ->label(__('Reporter / Requester'))
+                            ->label('صاحب الطلب')
                             ->state(function (Task $record): string {
                                 $reporter = app(TaskAccessService::class)->resolveReporter($record);
 
@@ -163,24 +161,24 @@ class TaskInfolist
                             })
                             ->placeholder('-'),
                         TextEntry::make('reported_by_phone')
-                            ->label(__('Reported By Phone'))
+                            ->label('هاتف المبلّغ')
                             ->placeholder('-'),
                         TextEntry::make('createdByUser.name')
-                            ->label(__('Created by'))
+                            ->label('أنشئت بواسطة')
                             ->placeholder('-'),
                         TextEntry::make('updatedByUser.name')
-                            ->label(__('Updated by'))
+                            ->label('آخر تعديل بواسطة')
                             ->placeholder('-'),
                         TextEntry::make('created_at')
-                            ->label(__('Created At'))
+                            ->label('تاريخ الإنشاء')
                             ->dateTime()
                             ->placeholder('-'),
                         TextEntry::make('updated_at')
-                            ->label(__('Updated At'))
+                            ->label('تاريخ التعديل')
                             ->dateTime()
                             ->placeholder('-'),
                         IconEntry::make('deleted_at')
-                            ->label(__('Deleted'))
+                            ->label('محذوفة')
                             ->boolean()
                             ->state(fn (Task $record): bool => $record->trashed()),
                     ])

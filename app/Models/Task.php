@@ -101,6 +101,7 @@ class Task extends Model
             TaskStatus::COMPLETED,
             TaskStatus::CANCELLED,
             TaskStatus::REJECTED,
+            TaskStatus::REOPENED,
         ], true)) {
             return $status;
         }
@@ -115,7 +116,7 @@ class Task extends Model
     public function workflowStatusLabel(): string
     {
         if ($this->isPendingAcceptanceState()) {
-            return __('Pending Acceptance');
+            return 'بانتظار القبول';
         }
 
         return $this->workflowStatus()->label();
@@ -223,5 +224,10 @@ class Task extends Model
     private function isRecognizedAssignmentTarget(TaskAssignmentTarget $target): bool
     {
         return in_array($target->target_type, $this->recognizedAssignmentTargetTypes(), true);
+    }
+
+    public function displayNumber(): string
+    {
+        return 'MHM-'.str_pad((string) $this->id, 5, '0', STR_PAD_LEFT);
     }
 }

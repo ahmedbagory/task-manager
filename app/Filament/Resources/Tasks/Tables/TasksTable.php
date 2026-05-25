@@ -28,12 +28,13 @@ class TasksTable
         return $table
             ->columns([
                 TextColumn::make('task_number')
-                    ->label(__('Task #'))
+                    ->label('رقم المهمة')
+                    ->formatStateUsing(fn ($state, Task $record): string => $record->displayNumber())
                     ->searchable()
                     ->sortable()
                     ->copyable(),
                 TextColumn::make('title')
-                    ->label(__('Title'))
+                    ->label('العنوان')
                     ->searchable()
                     ->sortable()
                     ->limit(40),
@@ -53,7 +54,7 @@ class TasksTable
                     ->label('القسم / الوحدة')
                     ->placeholder('-'),
                 TextColumn::make('assignees_summary')
-                    ->label(__('Assigned Employees'))
+                    ->label('المكلفين')
                     ->state(fn (Task $record): string => app(TaskAccessService::class)
                         ->resolveAssignees($record)
                         ->pluck('name')
@@ -61,7 +62,7 @@ class TasksTable
                     ->wrap()
                     ->placeholder('-'),
                 TextColumn::make('reporter_summary')
-                    ->label(__('Reporter / Requester'))
+                    ->label('صاحب الطلب')
                     ->state(function (Task $record): string {
                         $reporter = app(TaskAccessService::class)->resolveReporter($record);
 
@@ -77,33 +78,33 @@ class TasksTable
                     ->wrap()
                     ->placeholder('-'),
                 TextColumn::make('due_at')
-                    ->label(__('Due At'))
+                    ->label('تاريخ الاستحقاق')
                     ->dateTime()
                     ->sortable()
                     ->placeholder('-'),
                 TextColumn::make('description')
-                    ->label(__('Description'))
+                    ->label('الوصف')
                     ->searchable()
                     ->toggleable(isToggledHiddenByDefault: true)
                     ->limit(60)
                     ->placeholder('-'),
                 TextColumn::make('reported_by_phone')
-                    ->label(__('Reported By Phone'))
+                    ->label('هاتف المبلّغ')
                     ->searchable()
                     ->toggleable(isToggledHiddenByDefault: true)
                     ->placeholder('-'),
                 TextColumn::make('location')
-                    ->label(__('Location'))
+                    ->label('الموقع')
                     ->searchable()
                     ->toggleable(isToggledHiddenByDefault: true)
                     ->placeholder('-'),
                 TextColumn::make('created_at')
-                    ->label(__('Created At'))
+                    ->label('تاريخ الإنشاء')
                     ->dateTime()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('deleted_at')
-                    ->label(__('Deleted At'))
+                    ->label('تاريخ الحذف')
                     ->dateTime()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
@@ -119,7 +120,7 @@ class TasksTable
                     ->label('القسم / الوحدة')
                     ->options(fn (): array => app(DepartmentHierarchyService::class)->hierarchyOptions()),
                 SelectFilter::make('assigned_to_user_id')
-                    ->label(__('Assigned Employee'))
+                    ->label('الموظف المكلف')
                     ->relationship(
                         name: 'assignedToUser',
                         titleAttribute: 'name',

@@ -15,11 +15,13 @@
         $targetPreview = $assignees->take(6);
         $remainingTargetCount = max($assignees->count() - $targetPreview->count(), 0);
         $infoItems = [
-            ['label' => __('القسم / الوحدة'), 'value' => $task->department?->hierarchy_name ?? '—'],
-            ['label' => __('التصنيف'), 'value' => $task->category?->name ?? '—'],
-            ['label' => __('الموعد المستهدف'), 'value' => $task->due_at?->format('Y-m-d H:i') ?? '—'],
-            ['label' => __('الموقع'), 'value' => $task->location ?: '—'],
-            ['label' => __('المبلّغ / الطالب'), 'value' => trim(implode(' - ', array_filter([$reporter['name'] ?? null, $reporter['phone'] ?? null]))) ?: '—'],
+            ['label' => 'صاحب الطلب', 'value' => trim(implode(' - ', array_filter([$reporter['name'] ?? null, $reporter['phone'] ?? null]))) ?: '—'],
+            ['label' => 'المكلفين', 'value' => $assignees->isNotEmpty() ? $assignees->pluck('name')->implode('، ') : '—'],
+            ['label' => 'أنشئت بواسطة', 'value' => $task->createdByUser?->name ?? '—'],
+            ['label' => 'القسم / الوحدة', 'value' => $task->department?->hierarchy_name ?? '—'],
+            ['label' => 'التصنيف', 'value' => $task->category?->name ?? '—'],
+            ['label' => 'الموعد المستهدف', 'value' => $task->due_at?->format('Y-m-d H:i') ?? '—'],
+            ['label' => 'الموقع', 'value' => $task->location ?: '—'],
         ];
     @endphp
 
@@ -28,7 +30,7 @@
             <x-filament::section
                 compact
                 :heading="$task->title"
-                :description="$task->task_number"
+                :description="$task->displayNumber()"
             >
                 <x-slot name="afterHeader">
                     <div class="flex flex-wrap items-center gap-2">
@@ -105,7 +107,7 @@
                                         {{ $assignees->pluck('name')->implode('، ') }}
                                     </p>
                                     <p class="text-sm text-gray-500 dark:text-gray-400">
-                                        {{ __('المبلّغ') }}: {{ trim(implode(' - ', array_filter([$reporter['name'] ?? null, $reporter['phone'] ?? null]))) ?: '—' }}
+                                        صاحب الطلب: {{ trim(implode(' - ', array_filter([$reporter['name'] ?? null, $reporter['phone'] ?? null]))) ?: '—' }}
                                     </p>
                                 </div>
 
@@ -118,7 +120,7 @@
 
                             <dl class="mt-4 grid gap-3 sm:grid-cols-2">
                                 <div>
-                                    <dt class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('بواسطة') }}</dt>
+                                    <dt class="text-xs font-medium text-gray-500 dark:text-gray-400">تم الإسناد بواسطة</dt>
                                     <dd class="mt-1 text-sm font-semibold text-gray-950 dark:text-white">{{ $latestAssignment?->assignedByUser?->name ?? '—' }}</dd>
                                 </div>
 
@@ -142,7 +144,7 @@
                                     <p class="text-base font-semibold text-gray-950 dark:text-white">
                                         {{ $resolvedTargetUsers->count() }} {{ __('موظف') }}
                                     </p>
-                                    <p class="text-sm text-gray-500 dark:text-gray-400">{{ __('Pending Acceptance') }}</p>
+                                    <p class="text-sm text-gray-500 dark:text-gray-400">بانتظار القبول</p>
                                 </div>
 
                                 <x-filament::badge :color="$workflowStatus->color()">

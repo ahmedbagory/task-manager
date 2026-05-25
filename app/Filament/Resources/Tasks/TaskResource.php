@@ -71,22 +71,22 @@ class TaskResource extends Resource
 
     public static function getModelLabel(): string
     {
-        return __('Task');
+        return 'مهمة';
     }
 
     public static function getPluralModelLabel(): string
     {
-        return __('Tasks');
+        return 'المهام';
     }
 
     public static function getNavigationLabel(): string
     {
-        return __('Tasks');
+        return 'المهام';
     }
 
     public static function getNavigationGroup(): string|UnitEnum|null
     {
-        return __('Task Management');
+        return 'إدارة المهام';
     }
 
     public static function getEloquentQuery(): Builder

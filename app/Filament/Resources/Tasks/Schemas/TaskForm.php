@@ -26,29 +26,29 @@ class TaskForm
     {
         return $schema
             ->components([
-                Section::make(__('Task Details'))
+                Section::make('تفاصيل المهمة')
                     ->components([
                         TextInput::make('title')
-                            ->label(__('Title'))
+                            ->label('العنوان')
                             ->required()
                             ->maxLength(255)
                             ->columnSpanFull(),
                         Textarea::make('description')
-                            ->label(__('Description'))
+                            ->label('الوصف')
                             ->rows(4)
                             ->columnSpanFull(),
                         Select::make('priority')
-                            ->label(__('Priority'))
+                            ->label('الأولوية')
                             ->options(TaskPriority::options())
                             ->default(TaskPriority::MEDIUM->value)
                             ->required(),
                         Select::make('status')
-                            ->label(__('Status'))
-                            ->options(TaskStatus::options())
-                            ->default(TaskStatus::PENDING_ASSIGNMENT->value)
+                            ->label('الحالة')
+                            ->options(TaskStatus::formOptions())
+                            ->default(TaskStatus::NEW->value)
                             ->required(),
                         Select::make('source')
-                            ->label(__('Source'))
+                            ->label('المصدر')
                             ->options(TaskSource::options())
                             ->default(TaskSource::MANUAL->value)
                             ->required()
@@ -56,7 +56,7 @@ class TaskForm
                             ->dehydrated(),
                     ])
                     ->columns(3),
-                Section::make(__('Classification'))
+                Section::make('التصنيف')
                     ->components([
                         Select::make('department_id')
                             ->label('القسم / الوحدة')
@@ -66,7 +66,7 @@ class TaskForm
                             ->live()
                             ->afterStateUpdated(fn (Set $set) => $set('category_id', null)),
                         Select::make('category_id')
-                            ->label(__('Category'))
+                            ->label('التصنيف')
                             ->relationship(
                                 name: 'category',
                                 titleAttribute: 'name',
@@ -93,7 +93,7 @@ class TaskForm
                             ->searchable()
                             ->preload(),
                         TextInput::make('location')
-                            ->label(__('Location'))
+                            ->label('الموقع')
                             ->maxLength(255),
                     ])
                     ->columns(3),
@@ -153,10 +153,10 @@ class TaskForm
                     ])
                     ->columns(3)
                     ->description(__('اختر أقسام أو فروع أو موظفين محددين، أو فعّل "إسناد للكل" لإرسالها لجميع الموظفين.')),
-                Section::make(__('Reporter & Timing'))
+                Section::make('صاحب الطلب والمواعيد')
                     ->components([
                         Select::make('reported_by_user_id')
-                            ->label(__('Reported By User'))
+                            ->label('صاحب الطلب')
                             ->relationship(
                                 name: 'reportedByUser',
                                 titleAttribute: 'name',
@@ -170,15 +170,15 @@ class TaskForm
                             ->searchable()
                             ->preload(),
                         TextInput::make('reported_by_phone')
-                            ->label(__('Reported By Phone'))
+                            ->label('هاتف المبلّغ')
                             ->tel()
                             ->maxLength(255),
                         DateTimePicker::make('due_at')
-                            ->label(__('Due At')),
+                            ->label('تاريخ الاستحقاق'),
                         DateTimePicker::make('started_at')
-                            ->label(__('Started At')),
+                            ->label('تاريخ البدء'),
                         DateTimePicker::make('completed_at')
-                            ->label(__('Completed At')),
+                            ->label('تاريخ الإكمال'),
                     ])
                     ->columns(3),
             ]);

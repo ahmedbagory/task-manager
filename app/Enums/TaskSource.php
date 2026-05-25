@@ -23,9 +23,9 @@ enum TaskSource: string
     public function label(): string
     {
         return match ($this) {
-            self::MANUAL => __('Manual'),
-            self::WHATSAPP => __('WhatsApp'),
-            self::API => __('API'),
+            self::MANUAL => 'يدوي',
+            self::WHATSAPP => 'واتساب',
+            self::API => 'API',
         };
     }
 

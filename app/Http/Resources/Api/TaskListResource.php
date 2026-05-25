@@ -22,9 +22,9 @@ class TaskListResource extends JsonResource
 
         $status = $this->workflowStatus();
 
-        $requestedBy = $this->latestAssignment?->assignedByUser
-            ?? $this->reportedByUser
-            ?? $this->createdByUser;
+        $requestedBy = $this->reportedByUser ?? $this->createdByUser;
+
+        $assignedByUser = $this->latestAssignment?->assignedByUser;
 
         $commentsCount = $this->relationLoaded('comments')
             ? $this->comments->count()
@@ -40,6 +40,7 @@ class TaskListResource extends JsonResource
         return [
             'id' => $this->id,
             'task_number' => $this->task_number,
+            'display_number' => $this->resource->displayNumber(),
             'title' => $this->title,
             'description' => $this->description,
             'reported_by_phone' => $this->reported_by_phone,
@@ -77,6 +78,12 @@ class TaskListResource extends JsonResource
             'reporter' => $taskAccessService->resolveReporter($this->resource),
             'requested_by' => $requestedBy
                 ? (new UserResource($requestedBy))->resolve()
+                : null,
+            'assigned_by' => $assignedByUser
+                ? (new UserResource($assignedByUser))->resolve()
+                : null,
+            'created_by' => $this->createdByUser
+                ? (new UserResource($this->createdByUser))->resolve()
                 : null,
             'comments_count' => $commentsCount,
             'my_assignment' => $myAssignment,

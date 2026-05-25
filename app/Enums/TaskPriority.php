@@ -24,10 +24,10 @@ enum TaskPriority: string
     public function label(): string
     {
         return match ($this) {
-            self::LOW => __('Low'),
-            self::MEDIUM => __('Medium'),
-            self::HIGH => __('High'),
-            self::URGENT => __('Urgent'),
+            self::LOW => 'منخفضة',
+            self::MEDIUM => 'متوسطة',
+            self::HIGH => 'عالية',
+            self::URGENT => 'عاجلة',
         };
     }
 

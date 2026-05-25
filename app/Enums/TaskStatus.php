@@ -14,6 +14,7 @@ enum TaskStatus: string
     case COMPLETED = 'completed';
     case CANCELLED = 'cancelled';
     case REJECTED = 'rejected';
+    case REOPENED = 'reopened';
 
     public static function values(): array
     {
@@ -30,16 +31,17 @@ enum TaskStatus: string
     public function label(): string
     {
         return match ($this) {
-            self::NEW => __('New'),
-            self::PENDING_ASSIGNMENT => __('Pending Assignment'),
-            self::ASSIGNED => __('Assigned'),
-            self::ACCEPTED => __('Accepted'),
-            self::IN_PROGRESS => __('In Progress'),
-            self::WAIT_RESPONSE => __('Waiting Response'),
-            self::AWAITING_REPORTER_CONFIRMATION => __('Awaiting Reporter Confirmation'),
-            self::COMPLETED => __('Completed'),
-            self::CANCELLED => __('Cancelled'),
-            self::REJECTED => __('Rejected'),
+            self::NEW => 'جديدة',
+            self::PENDING_ASSIGNMENT => 'مفتوحة',
+            self::ASSIGNED => 'مسندة',
+            self::ACCEPTED => 'مقبولة',
+            self::IN_PROGRESS => 'قيد التنفيذ',
+            self::WAIT_RESPONSE => 'بانتظار رد',
+            self::AWAITING_REPORTER_CONFIRMATION => 'بانتظار تأكيد صاحب الطلب',
+            self::COMPLETED => 'مكتملة',
+            self::CANCELLED => 'ملغاة',
+            self::REJECTED => 'مرفوضة',
+            self::REOPENED => 'معاد فتحها',
         };
     }
 
@@ -56,6 +58,24 @@ enum TaskStatus: string
             self::COMPLETED => 'success',
             self::CANCELLED => 'danger',
             self::REJECTED => 'danger',
+            self::REOPENED => 'warning',
         };
+    }
+
+    public static function formOptions(): array
+    {
+        $visible = [
+            self::NEW,
+            self::PENDING_ASSIGNMENT,
+            self::IN_PROGRESS,
+            self::AWAITING_REPORTER_CONFIRMATION,
+            self::COMPLETED,
+            self::REOPENED,
+            self::CANCELLED,
+        ];
+
+        return collect($visible)
+            ->mapWithKeys(fn (self $case): array => [$case->value => $case->label()])
+            ->all();
     }
 }

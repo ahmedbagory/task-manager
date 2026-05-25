@@ -101,8 +101,10 @@ class TaskPolicy
 
     public function respondToAssignment(User $user, Task $task): bool
     {
+        $role = $this->taskAccessService()->resolveCurrentUserRole($task, $user);
+
         return $user->can('tasks.view')
-            && $this->taskAccessService()->resolveCurrentUserRole($task, $user) === 'assignee';
+            && in_array($role, ['assignee', 'assignee_and_requester'], true);
     }
 
     public function addWorkspaceComment(User $user, Task $task): bool

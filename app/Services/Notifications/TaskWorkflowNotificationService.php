@@ -69,7 +69,7 @@ class TaskWorkflowNotificationService
 
         $this->sendDatabaseNotification(
             recipients: $recipients,
-            title: __('تم تحويل رسالة واتساب إلى مهمة :number', ['number' => $task->task_number]),
+            title: __('تم تحويل رسالة واتساب إلى مهمة :number', ['number' => $task->displayNumber()]),
             body: $senderDisplay.' → '.$task->title,
             url: route('filament.admin.resources.tasks.view', ['record' => $task]),
             status: 'success',
@@ -138,7 +138,7 @@ class TaskWorkflowNotificationService
 
         $this->sendDatabaseNotification(
             recipients: $recipients,
-            title: __('تم رفض المهمة :number', ['number' => $task->task_number]),
+            title: __('تم رفض المهمة :number', ['number' => $task->displayNumber()]),
             body: $actor->name.' — '.$reason,
             url: route('filament.admin.resources.tasks.view', ['record' => $task]),
             status: 'danger',
@@ -168,7 +168,7 @@ class TaskWorkflowNotificationService
 
         $this->sendDatabaseNotification(
             recipients: $recipients,
-            title: __('تم إكمال المهمة :number', ['number' => $task->task_number]),
+            title: __('تم إكمال المهمة :number', ['number' => $task->displayNumber()]),
             body: $body,
             url: route('filament.admin.resources.tasks.view', ['record' => $task]),
             status: 'success',

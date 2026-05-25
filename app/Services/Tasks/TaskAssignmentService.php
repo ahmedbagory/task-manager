@@ -240,7 +240,7 @@ class TaskAssignmentService
 
             $lockedTask = Task::query()->lockForUpdate()->findOrFail($lockedAssignment->task_id);
 
-            if (! in_array($lockedTask->status, [TaskStatus::ACCEPTED, TaskStatus::WAIT_RESPONSE], true)) {
+            if (! in_array($lockedTask->status, [TaskStatus::ACCEPTED, TaskStatus::WAIT_RESPONSE, TaskStatus::REOPENED], true)) {
                 throw ValidationException::withMessages([
                     'task' => 'Only accepted or waiting-response tasks can be started.',
                 ]);
@@ -289,7 +289,7 @@ class TaskAssignmentService
 
             $lockedTask = Task::query()->lockForUpdate()->findOrFail($lockedAssignment->task_id);
 
-            if ($lockedTask->status !== TaskStatus::IN_PROGRESS) {
+            if (! in_array($lockedTask->status, [TaskStatus::IN_PROGRESS, TaskStatus::REOPENED], true)) {
                 throw ValidationException::withMessages([
                     'task' => 'Only in-progress tasks can be moved to waiting response.',
                 ]);
@@ -358,7 +358,7 @@ class TaskAssignmentService
 
             $lockedTask = Task::query()->lockForUpdate()->findOrFail($lockedAssignment->task_id);
 
-            if (! in_array($lockedTask->status, [TaskStatus::IN_PROGRESS, TaskStatus::WAIT_RESPONSE], true)) {
+            if (! in_array($lockedTask->status, [TaskStatus::IN_PROGRESS, TaskStatus::WAIT_RESPONSE, TaskStatus::REOPENED], true)) {
                 throw ValidationException::withMessages([
                     'task' => 'Only in-progress or waiting-response tasks can be completed.',
                 ]);
@@ -512,7 +512,7 @@ class TaskAssignmentService
             }
 
             $lockedTask->forceFill([
-                'status' => TaskStatus::IN_PROGRESS,
+                'status' => TaskStatus::REOPENED,
                 'completed_at' => null,
                 'reporter_confirmation_status' => 'rejected',
                 'reporter_confirmed_by_user_id' => $actor->id,

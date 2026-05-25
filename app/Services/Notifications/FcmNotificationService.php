@@ -129,7 +129,7 @@ class FcmNotificationService
         $label = $actionLabels[$action] ?? $action;
         $actorName = $actor?->name ?? __('Unknown');
 
-        $title = __('Task')." {$task->task_number} {$label}";
+        $title = __('Task')." {$task->displayNumber()} {$label}";
         $body = "{$actorName} {$label} \"{$task->title}\"";
 
         $data = [
