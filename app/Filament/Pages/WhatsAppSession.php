@@ -63,7 +63,7 @@ class WhatsAppSession extends Page
 
     public static function getNavigationGroup(): string|UnitEnum|null
     {
-        return __('واتساب');
+        return __('WhatsApp');
     }
 
     public static function canAccess(): bool

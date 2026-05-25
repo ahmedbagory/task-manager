@@ -21,7 +21,7 @@ class WhatsappContactResource extends Resource
 {
     protected static ?string $model = WhatsappContact::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedPhone;
+    protected static string|BackedEnum|null $navigationIcon = null;
 
     protected static ?int $navigationSort = 3;
 
@@ -72,6 +72,6 @@ class WhatsappContactResource extends Resource
 
     public static function getNavigationGroup(): string|UnitEnum|null
     {
-        return __('واتساب');
+        return __('WhatsApp');
     }
 }
