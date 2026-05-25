@@ -112,6 +112,25 @@ class WhatsappPagesRenderTest extends TestCase
             ->assertSee('عرض QR');
     }
 
+    public function test_whatsapp_inbox_layout_follows_the_active_locale_direction(): void
+    {
+        app(RbacInitializationService::class)->seed();
+
+        $dispatcher = User::factory()->create();
+        $dispatcher->assignRole(Rbac::DISPATCHER);
+
+        $this->fakeWhatsappUiDependencies();
+
+        app()->setLocale('en');
+
+        $this->actingAs($dispatcher)
+            ->get(WhatsappMessageResource::getUrl('index'))
+            ->assertOk()
+            ->assertSee('dir="ltr"', false)
+            ->assertSee('xl:flex-row', false)
+            ->assertDontSee('xl:flex-row-reverse', false);
+    }
+
     /**
      * @param  array{
      *     status?: array<string, mixed>,

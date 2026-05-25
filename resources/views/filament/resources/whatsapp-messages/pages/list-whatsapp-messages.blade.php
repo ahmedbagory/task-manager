@@ -61,6 +61,16 @@
         $bridgeState = $bridgeStatus['state'] ?? 'disconnected';
         $hasActiveConversation = $activeContact || $isGroupActive;
         $sidebarCount = $conversations->count();
+        $isRtl = __('filament-panels::layout.direction') === 'rtl';
+        $localeDirection = $isRtl ? 'rtl' : 'ltr';
+        $desktopLayoutClass = $isRtl ? 'xl:flex-row-reverse' : 'xl:flex-row';
+        $asideBorderClass = $isRtl ? 'border-e' : 'border-s';
+        $mobileBackIcon = $isRtl ? 'heroicon-o-arrow-right' : 'heroicon-o-arrow-left';
+        $sendIconClass = $isRtl ? 'rotate-180' : null;
+        $outgoingAlignmentClass = $isRtl ? 'justify-start' : 'justify-end';
+        $incomingAlignmentClass = $isRtl ? 'justify-end' : 'justify-start';
+        $bidiAuto = static fn (?string $value) => \App\Support\BidiText::auto($value);
+        $bidiLtr = static fn (?string $value) => \App\Support\BidiText::ltr($value);
     @endphp
 
     <div
@@ -144,10 +154,11 @@
             }
         }"
         data-wa-root
-        class="wa-chat-surface flex h-[calc(100dvh-7rem)] min-h-0 overflow-hidden rounded-[1.75rem] border border-gray-200 shadow-sm dark:border-white/10 xl:flex-row-reverse"
+        dir="{{ $localeDirection }}"
+        class="wa-chat-surface flex h-[calc(100dvh-7rem)] min-h-0 overflow-hidden rounded-[1.75rem] border border-gray-200 shadow-sm dark:border-white/10 {{ $desktopLayoutClass }}"
     >
         <aside
-            class="flex h-full w-full flex-col border-s border-gray-200/80 bg-white/90 backdrop-blur dark:border-white/10 dark:bg-[#07111d]/90 xl:w-[360px] xl:shrink-0"
+            class="flex h-full w-full flex-col {{ $asideBorderClass }} border-gray-200/80 bg-white/90 backdrop-blur dark:border-white/10 dark:bg-[#07111d]/90 xl:w-[360px] xl:shrink-0"
             :class="{ 'hidden xl:flex': mobileView === 'chat' }"
         >
             <div class="shrink-0 border-b border-gray-200/80 px-4 py-4 dark:border-white/10">
@@ -231,7 +242,7 @@
                         <div class="min-w-0 flex-1">
                             <div class="flex items-start justify-between gap-2">
                                 <div class="min-w-0">
-                                    <p class="truncate text-sm font-semibold text-gray-950 dark:text-white">{{ $convItem['name'] }}</p>
+                                    <p class="truncate text-sm font-semibold text-gray-950 dark:text-white">{{ $bidiAuto($convItem['name']) }}</p>
                                     <p class="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400" @if (! $isGroup && filled($convItem['phone'])) dir="ltr" style="unicode-bidi:isolate" @endif>
                                         {{ $isGroup ? __('مجموعة') : ($convItem['phone'] ?: __('بدون رقم')) }}
                                     </p>
@@ -243,7 +254,7 @@
                             </div>
 
                             <p class="mt-2 truncate text-[12px] leading-5 text-gray-600 dark:text-gray-300">
-                                {{ $convItem['preview'] }}
+                                {{ $bidiAuto($convItem['preview']) }}
                             </p>
                         </div>
                     </a>
@@ -266,7 +277,7 @@
                             class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 text-gray-500 transition hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-600 dark:border-white/10 dark:text-gray-300 dark:hover:border-emerald-500/30 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-200 xl:hidden"
                             @click="mobileView = 'list'"
                         >
-                            <x-filament::icon icon="heroicon-o-arrow-right" class="h-4 w-4" />
+                            <x-filament::icon :icon="$mobileBackIcon" class="h-4 w-4" />
                         </button>
 
                         <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl {{ $isGroupActive ? 'bg-emerald-500 text-white' : 'bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-white' }}">
@@ -280,7 +291,7 @@
                         <div class="min-w-0 flex-1">
                             <div class="flex flex-wrap items-center gap-2">
                                 <h3 class="truncate text-sm font-semibold text-gray-950 dark:text-white">
-                                    {{ $isGroupActive ? ($activeGroupName ?: __('مجموعة بدون اسم')) : ($activeContact->name ?: __('جهة اتصال غير معروفة')) }}
+                                    {{ $bidiAuto($isGroupActive ? ($activeGroupName ?: __('مجموعة بدون اسم')) : ($activeContact->name ?: __('جهة اتصال غير معروفة'))) }}
                                 </h3>
 
                                 @if ($isGroupActive)
@@ -292,9 +303,13 @@
 
                             <p class="mt-1 truncate text-xs text-gray-500 dark:text-gray-400" @if (! $isGroupActive) dir="ltr" style="unicode-bidi:isolate" @endif>
                                 @if ($isGroupActive)
-                                    {{ $this->getActiveGroupId() ?: __('بدون معرف') }}
+                                    @if (filled($this->getActiveGroupId()))
+                                        {{ $bidiLtr($this->getActiveGroupId()) }}
+                                    @else
+                                        {{ __('بدون معرف') }}
+                                    @endif
                                 @else
-                                    {{ $activeContact->phone }}
+                                    {{ $bidiLtr($activeContact->phone) }}
                                 @endif
                             </p>
                         </div>
@@ -386,17 +401,20 @@
                                     : 'text-gray-500 dark:text-gray-400';
                             @endphp
 
-                            <div class="mb-3 flex {{ $isOutgoing ? 'justify-start' : 'justify-end' }}">
+                            <div class="mb-3 flex {{ $isOutgoing ? $outgoingAlignmentClass : $incomingAlignmentClass }}">
                                 <article class="max-w-[88%] rounded-[1.4rem] border border-black/5 px-3 py-2 shadow-sm sm:max-w-[72%] {{ $bubbleClasses }}">
                                     @if ($senderName)
                                         <p class="mb-1 text-[11px] font-bold text-amber-600 dark:text-amber-300">
-                                            {{ $senderName }}
+                                            {{ $bidiAuto($senderName) }}
                                         </p>
                                     @endif
 
                                     @if ($message->media_rejected)
                                         <div class="mb-2 rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-100">
-                                            {{ __('تم رفض الملف') }}: {{ $message->media_reject_reason ?: __('نوع غير مسموح') }}
+                                            {{ __('تم رفض الملف') }}:
+                                            <span dir="auto" style="unicode-bidi:isolate">
+                                                {{ $message->media_reject_reason ?: __('نوع غير مسموح') }}
+                                            </span>
                                         </div>
                                     @elseif ($message->hasMedia())
                                         <div class="mb-2">
@@ -442,9 +460,9 @@
                                                         </div>
 
                                                         <div class="min-w-0 flex-1">
-                                                            <p class="truncate text-sm font-semibold">{{ $message->media_name ?: __('مرفق واتساب') }}</p>
+                                                            <p class="truncate text-sm font-semibold">{{ $bidiAuto($message->media_name ?: __('مرفق واتساب')) }}</p>
                                                             <p class="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
-                                                                {{ $message->media_type ?: __('ملف') }}
+                                                                <span dir="auto" style="unicode-bidi:isolate">{{ $message->media_type ?: __('ملف') }}</span>
                                                                 @if ($message->media_size)
                                                                     • {{ $this->mediaSizeLabel($message->media_size) }}
                                                                 @endif
@@ -472,7 +490,7 @@
                                     @endif
 
                                     @if (filled($message->body))
-                                        <p class="whitespace-pre-line text-[13px] leading-6">
+                                        <p class="whitespace-pre-line text-[13px] leading-6" dir="auto" style="unicode-bidi:isolate">
                                             {{ $message->body }}
                                         </p>
                                     @endif
@@ -537,7 +555,7 @@
                                     </div>
 
                                     @if ($message->failed_reason && $isOutgoing)
-                                        <p class="mt-2 text-[11px] text-red-600 dark:text-red-200">{{ $message->failed_reason }}</p>
+                                        <p class="mt-2 text-[11px] text-red-600 dark:text-red-200" dir="auto" style="unicode-bidi:isolate">{{ $message->failed_reason }}</p>
                                     @endif
                                 </article>
                             </div>
@@ -575,11 +593,17 @@
 
                             @if ($isGroupActive)
                                 <div class="mb-2 rounded-2xl bg-emerald-50 px-3 py-2 text-[11px] text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200">
-                                    {{ __('الإرسال سيتم إلى المجموعة الحالية:') }} {{ $activeGroupName ?: $this->getActiveGroupId() }}
+                                    {{ __('الإرسال سيتم إلى المجموعة الحالية:') }}
+                                    <span dir="auto" style="unicode-bidi:isolate">
+                                        {{ $activeGroupName ?: $this->getActiveGroupId() }}
+                                    </span>
                                 </div>
                             @elseif ($sendToSameGroup && $replyGroup)
                                 <div class="mb-2 rounded-2xl bg-sky-50 px-3 py-2 text-[11px] text-sky-700 dark:bg-sky-500/10 dark:text-sky-200">
-                                    {{ __('الرد سيعود إلى المجموعة:') }} {{ $replyGroup['group_name'] ?: $replyGroup['group_id'] }}
+                                    {{ __('الرد سيعود إلى المجموعة:') }}
+                                    <span dir="auto" style="unicode-bidi:isolate">
+                                        {{ $replyGroup['group_name'] ?: $replyGroup['group_id'] }}
+                                    </span>
                                 </div>
                             @endif
 
@@ -675,6 +699,8 @@
                                             name="body"
                                             rows="1"
                                             placeholder="{{ __('اكتب رسالتك أو أرفق صورة / ملف') }}"
+                                            dir="auto"
+                                            style="unicode-bidi:isolate"
                                             class="max-h-[130px] min-h-[38px] w-full resize-none border-0 bg-transparent p-0 text-[13px] text-gray-900 outline-none focus:ring-0 dark:text-white"
                                             @input="resize($event.target)"
                                             @keydown.enter="submitOnEnter($event)"
@@ -687,7 +713,7 @@
                                         :disabled="sending"
                                         title="{{ __('إرسال') }}"
                                     >
-                                        <svg x-show="!sending" class="h-5 w-5 rotate-180" fill="currentColor" viewBox="0 0 24 24"><path d="M1.101 21.757 23.8 12.028 1.101 2.3l.011 7.912 13.623 1.816-13.623 1.817-.011 7.912z"/></svg>
+                                        <svg x-show="!sending" class="h-5 w-5 {{ $sendIconClass }}" fill="currentColor" viewBox="0 0 24 24"><path d="M1.101 21.757 23.8 12.028 1.101 2.3l.011 7.912 13.623 1.816-13.623 1.817-.011 7.912z"/></svg>
                                         <svg x-show="sending" x-cloak class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
                                     </button>
                                 </div>
