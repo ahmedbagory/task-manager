@@ -6,8 +6,10 @@
 @source '../../../../resources/views/vendor/filament-notifications/**/*';
 
 /* Sidebar polish: keep icons and labels aligned in both RTL/LTR */
+.fi-sidebar .fi-sidebar-group-btn,
 .fi-sidebar .fi-sidebar-item-btn,
 .fi-sidebar .fi-sidebar-database-notifications-btn {
+    width: 100%;
     justify-content: flex-start;
 }
 

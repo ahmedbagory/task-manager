@@ -69,6 +69,9 @@
         $sendIconClass = $isRtl ? 'rotate-180' : null;
         $outgoingAlignmentClass = $isRtl ? 'justify-start' : 'justify-end';
         $incomingAlignmentClass = $isRtl ? 'justify-end' : 'justify-start';
+        $contentAlignClass = $isRtl ? 'text-right' : 'text-left';
+        $metaAlignClass = $isRtl ? 'text-left' : 'text-right';
+        $headerBadgesAlignClass = $isRtl ? 'justify-end' : 'justify-start';
         $bidiAuto = static fn (?string $value) => \App\Support\BidiText::auto($value);
         $bidiLtr = static fn (?string $value) => \App\Support\BidiText::ltr($value);
     @endphp
@@ -163,7 +166,7 @@
         >
             <div class="shrink-0 border-b border-gray-200/80 px-4 py-4 dark:border-white/10">
                 <div class="flex items-start justify-between gap-3">
-                    <div class="space-y-1">
+                    <div class="space-y-1 {{ $contentAlignClass }}">
                         <p class="text-[11px] font-medium tracking-[0.22em] text-emerald-600 dark:text-emerald-300">{{ __('واتساب') }}</p>
                         <h2 class="text-lg font-semibold text-gray-950 dark:text-white">{{ __('محادثات واتساب') }}</h2>
                     </div>
@@ -189,7 +192,7 @@
                     </div>
                 </div>
 
-                <div class="mt-3 flex flex-wrap items-center gap-2">
+                <div class="mt-3 flex flex-wrap items-center gap-2 {{ $headerBadgesAlignClass }}">
                     <span
                         class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm"
                         :style="'background-color:' + bridgeHex"
@@ -239,7 +242,7 @@
                             @endif
                         </div>
 
-                        <div class="min-w-0 flex-1">
+                        <div class="min-w-0 flex-1 {{ $contentAlignClass }}">
                             <div class="flex items-start justify-between gap-2">
                                 <div class="min-w-0">
                                     <p class="truncate text-sm font-semibold text-gray-950 dark:text-white">{{ $bidiAuto($convItem['name']) }}</p>
@@ -248,7 +251,7 @@
                                     </p>
                                 </div>
 
-                                <span class="shrink-0 text-[11px] font-medium text-gray-400 dark:text-gray-500">
+                                <span class="shrink-0 text-[11px] font-medium text-gray-400 dark:text-gray-500 {{ $metaAlignClass }}">
                                     {{ $convItem['last_message_at']?->format('H:i') ?? '—' }}
                                 </span>
                             </div>
@@ -288,7 +291,7 @@
                             @endif
                         </div>
 
-                        <div class="min-w-0 flex-1">
+                        <div class="min-w-0 flex-1 {{ $contentAlignClass }}">
                             <div class="flex flex-wrap items-center gap-2">
                                 <h3 class="truncate text-sm font-semibold text-gray-950 dark:text-white">
                                     {{ $bidiAuto($isGroupActive ? ($activeGroupName ?: __('مجموعة بدون اسم')) : ($activeContact->name ?: __('جهة اتصال غير معروفة'))) }}
