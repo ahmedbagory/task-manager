@@ -70,6 +70,8 @@ class AdminPanelProvider extends PanelProvider
             ->navigationGroups([
                 NavigationGroup::make(__('Task Management'))
                     ->icon('heroicon-o-clipboard-document-list'),
+                NavigationGroup::make(__('واتساب'))
+                    ->icon('heroicon-o-chat-bubble-left-right'),
                 NavigationGroup::make(__('Reports'))
                     ->icon('heroicon-o-chart-bar')
                     ->collapsed(),
