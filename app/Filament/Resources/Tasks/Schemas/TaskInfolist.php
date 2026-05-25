@@ -7,6 +7,7 @@ use App\Enums\TaskSource;
 use App\Enums\TaskStatus;
 use App\Models\Task;
 use App\Models\TaskAssignmentTarget;
+use App\Services\Tasks\TaskAccessService;
 use Filament\Infolists\Components\IconEntry;
 use Filament\Infolists\Components\RepeatableEntry;
 use Filament\Infolists\Components\TextEntry;
@@ -52,8 +53,12 @@ class TaskInfolist
                         TextEntry::make('category.name')
                             ->label(__('Category'))
                             ->placeholder('-'),
-                        TextEntry::make('assignedToUser.name')
-                            ->label(__('Assigned Employee'))
+                        TextEntry::make('assignees_summary')
+                            ->label(__('Assigned Employees'))
+                            ->state(fn (Task $record): string => app(TaskAccessService::class)
+                                ->resolveAssignees($record)
+                                ->pluck('name')
+                                ->implode('، ') ?: '—')
                             ->placeholder('-'),
                         TextEntry::make('location')
                             ->label(__('Location'))
@@ -141,6 +146,21 @@ class TaskInfolist
                     ->components([
                         TextEntry::make('reportedByUser.name')
                             ->label(__('Reported by user'))
+                            ->placeholder('-'),
+                        TextEntry::make('reporter_summary')
+                            ->label(__('Reporter / Requester'))
+                            ->state(function (Task $record): string {
+                                $reporter = app(TaskAccessService::class)->resolveReporter($record);
+
+                                if (! $reporter) {
+                                    return '—';
+                                }
+
+                                $name = $reporter['name'] ?? null;
+                                $phone = $reporter['phone'] ?? null;
+
+                                return trim(implode(' - ', array_filter([$name, $phone]))) ?: '—';
+                            })
                             ->placeholder('-'),
                         TextEntry::make('reported_by_phone')
                             ->label(__('Reported By Phone'))

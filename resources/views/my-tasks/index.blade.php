@@ -33,6 +33,7 @@
                     'accepted' => 'bg-cyan-100 text-cyan-800',
                     'in_progress' => 'bg-indigo-100 text-indigo-800',
                     'wait_response' => 'bg-orange-100 text-orange-800',
+                    'awaiting_reporter_confirmation' => 'bg-violet-100 text-violet-800',
                     'completed' => 'bg-emerald-100 text-emerald-800',
                     'cancelled', 'rejected' => 'bg-rose-100 text-rose-700',
                     default => 'bg-slate-100 text-slate-700',

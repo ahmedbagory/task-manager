@@ -3,9 +3,8 @@
 namespace App\Http\Resources\Api;
 
 use App\Enums\TaskPriority;
-use App\Enums\TaskAssignmentStatus;
-use App\Enums\TaskStatus;
 use App\Models\Task;
+use App\Services\Tasks\TaskAccessService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -31,7 +30,12 @@ class TaskListResource extends JsonResource
             ? $this->comments->count()
             : (int) ($this->comments_count ?? 0);
 
-        $myAssignment = $this->resolveMyAssignment($request->user());
+        $taskAccessService = app(TaskAccessService::class);
+        $myAssignment = $taskAccessService->resolveMyAssignment($this->resource, $request->user());
+        $assignees = $taskAccessService->resolveAssignees($this->resource)
+            ->map(fn ($user): array => (new UserResource($user))->resolve())
+            ->values()
+            ->all();
 
         return [
             'id' => $this->id,
@@ -66,45 +70,19 @@ class TaskListResource extends JsonResource
             'completed_at' => $this->completed_at?->toIso8601String(),
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
+            'assigned_to' => $this->assignedToUser
+                ? (new UserResource($this->assignedToUser))->resolve()
+                : null,
+            'assignees' => $assignees,
+            'reporter' => $taskAccessService->resolveReporter($this->resource),
             'requested_by' => $requestedBy
                 ? (new UserResource($requestedBy))->resolve()
                 : null,
             'comments_count' => $commentsCount,
             'my_assignment' => $myAssignment,
-        ];
-    }
-
-    /**
-     * @return array{status: string, is_direct: bool, can_accept: bool}|null
-     */
-    private function resolveMyAssignment(?\App\Models\User $user): ?array
-    {
-        if (! $user) {
-            return null;
-        }
-
-        $workflowStatus = $this->workflowStatus();
-
-        if ($this->assigned_to_user_id === $user->id) {
-            $assignment = $this->relationLoaded('assignments')
-                ? $this->assignments->where('assigned_to_user_id', $user->id)->sortByDesc('id')->first()
-                : null;
-
-            return [
-                'status' => $assignment?->status?->value ?? $workflowStatus->value,
-                'is_direct' => true,
-                'can_accept' => $assignment?->status?->value === TaskAssignmentStatus::ASSIGNED->value,
-            ];
-        }
-
-        return [
-            'status' => $workflowStatus->value,
-            'is_direct' => false,
-            'can_accept' => in_array($workflowStatus, [
-                TaskStatus::NEW,
-                TaskStatus::PENDING_ASSIGNMENT,
-                TaskStatus::ASSIGNED,
-            ], true),
+            'current_user_role_on_task' => $taskAccessService->resolveCurrentUserRole($this->resource, $request->user()),
+            'allowed_actions' => $taskAccessService->resolveAllowedActions($this->resource, $request->user()),
+            'resolution_state' => $taskAccessService->resolveResolutionState($this->resource),
         ];
     }
 }

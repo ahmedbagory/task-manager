@@ -25,6 +25,8 @@ Route::middleware('auth:sanctum')->group(function (): void {
             Route::post('/{task}/comment', [MyTaskController::class, 'comment'])->whereNumber('task')->name('api.my-tasks.comment');
             Route::post('/{task}/complete', [MyTaskController::class, 'complete'])->whereNumber('task')->name('api.my-tasks.complete');
             Route::post('/{task}/reject', [MyTaskController::class, 'reject'])->whereNumber('task')->name('api.my-tasks.reject');
+            Route::post('/{task}/confirm-resolution', [MyTaskController::class, 'confirmResolution'])->whereNumber('task')->name('api.my-tasks.confirm-resolution');
+            Route::post('/{task}/reject-resolution', [MyTaskController::class, 'rejectResolution'])->whereNumber('task')->name('api.my-tasks.reject-resolution');
             Route::post('/{task}/attachments', [MyTaskController::class, 'attachment'])->whereNumber('task')->name('api.my-tasks.attachments');
         });
 });
@@ -59,6 +61,8 @@ Route::prefix('mobile')->name('api.mobile.')->group(function (): void {
             Route::post('/{task}/comment', [MyTaskController::class, 'comment'])->whereNumber('task')->name('comment');
             Route::post('/{task}/complete', [MyTaskController::class, 'complete'])->whereNumber('task')->name('complete');
             Route::post('/{task}/reject', [MyTaskController::class, 'reject'])->whereNumber('task')->name('reject');
+            Route::post('/{task}/confirm-resolution', [MyTaskController::class, 'confirmResolution'])->whereNumber('task')->name('confirm-resolution');
+            Route::post('/{task}/reject-resolution', [MyTaskController::class, 'rejectResolution'])->whereNumber('task')->name('reject-resolution');
             Route::post('/{task}/attachments', [MyTaskController::class, 'attachment'])->whereNumber('task')->name('attachments');
             Route::get('/{task}/attachments/{attachment}/download', [MyTaskController::class, 'downloadAttachment'])->whereNumber(['task', 'attachment'])->name('attachments.download');
         });

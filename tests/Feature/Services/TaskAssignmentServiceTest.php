@@ -99,6 +99,43 @@ class TaskAssignmentServiceTest extends TestCase
 
         $this->assertSame(TaskAssignmentStatus::COMPLETED, $assignment->status);
         $this->assertNotNull($assignment->completed_at);
+        $this->assertSame(TaskStatus::AWAITING_REPORTER_CONFIRMATION, $task->fresh()->status);
+        $this->assertNull($task->fresh()->completed_at);
+    }
+
+    public function test_reporter_confirmation_closes_task_and_rejection_reopens_it(): void
+    {
+        $service = app(TaskAssignmentService::class);
+
+        $dispatcher = User::factory()->create();
+        $assignee = User::factory()->create();
+        $reporter = User::factory()->create();
+
+        $task = Task::factory()->create([
+            'reported_by_user_id' => $reporter->id,
+            'status' => TaskStatus::PENDING_ASSIGNMENT->value,
+            'assigned_to_user_id' => null,
+            'source' => TaskSource::MANUAL->value,
+        ]);
+
+        $assignment = $service->assignTask($task, $assignee->id, $dispatcher, 'Assigned from dispatcher');
+        $service->acceptAssignment($assignment, $assignee);
+        $service->startTask($assignment, $assignee);
+        $service->completeAssignedTask($assignment, $assignee);
+
+        $this->assertSame(TaskStatus::AWAITING_REPORTER_CONFIRMATION, $task->fresh()->status);
+
+        $service->rejectResolution($task, $reporter, 'المشكلة لم تحل بعد.');
+
+        $this->assertSame(TaskStatus::IN_PROGRESS, $task->fresh()->status);
+        $this->assertSame(
+            TaskAssignmentStatus::ACCEPTED,
+            $task->fresh()->assignments()->latest('id')->first()->status
+        );
+
+        $service->completeAssignedTask($task->fresh()->assignments()->latest('id')->first(), $assignee);
+        $service->confirmResolution($task, $reporter);
+
         $this->assertSame(TaskStatus::COMPLETED, $task->fresh()->status);
         $this->assertNotNull($task->fresh()->completed_at);
     }

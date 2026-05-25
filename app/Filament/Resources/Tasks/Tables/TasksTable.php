@@ -7,6 +7,7 @@ use App\Enums\TaskSource;
 use App\Enums\TaskStatus;
 use App\Models\Task;
 use App\Services\Departments\DepartmentHierarchyService;
+use App\Services\Tasks\TaskAccessService;
 use App\Support\Rbac;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
@@ -51,11 +52,29 @@ class TasksTable
                 TextColumn::make('department.hierarchy_name')
                     ->label('القسم / الوحدة')
                     ->placeholder('-'),
-                TextColumn::make('assignedToUser.name')
-                    ->label(__('Assigned Employee'))
-                    ->searchable()
-                    ->sortable()
-                    ->description(fn ($record) => $record->assignedToUser?->department?->hierarchy_name)
+                TextColumn::make('assignees_summary')
+                    ->label(__('Assigned Employees'))
+                    ->state(fn (Task $record): string => app(TaskAccessService::class)
+                        ->resolveAssignees($record)
+                        ->pluck('name')
+                        ->implode('، ') ?: '—')
+                    ->wrap()
+                    ->placeholder('-'),
+                TextColumn::make('reporter_summary')
+                    ->label(__('Reporter / Requester'))
+                    ->state(function (Task $record): string {
+                        $reporter = app(TaskAccessService::class)->resolveReporter($record);
+
+                        if (! $reporter) {
+                            return '—';
+                        }
+
+                        $name = $reporter['name'] ?? null;
+                        $phone = $reporter['phone'] ?? null;
+
+                        return trim(implode(' - ', array_filter([$name, $phone]))) ?: '—';
+                    })
+                    ->wrap()
                     ->placeholder('-'),
                 TextColumn::make('due_at')
                     ->label(__('Due At'))

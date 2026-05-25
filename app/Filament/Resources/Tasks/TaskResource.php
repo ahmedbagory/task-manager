@@ -14,6 +14,7 @@ use App\Filament\Resources\Tasks\Schemas\TaskForm;
 use App\Filament\Resources\Tasks\Schemas\TaskInfolist;
 use App\Filament\Resources\Tasks\Tables\TasksTable;
 use App\Models\Task;
+use App\Services\Tasks\TaskAccessService;
 use App\Support\Rbac;
 use BackedEnum;
 use Filament\Resources\Resource;
@@ -90,16 +91,17 @@ class TaskResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
-        $query = parent::getEloquentQuery();
+        $query = parent::getEloquentQuery()->with([
+            'reportedByUser',
+            'whatsappContact.user',
+            'assignedToUser.department.parent',
+            'assignments.assignedToUser.department.parent',
+            'assignmentTargets',
+        ]);
         $user = Auth::user();
 
         if ($user?->hasRole(Rbac::EMPLOYEE)) {
-            $query->where(function (Builder $builder) use ($user): void {
-                $builder
-                    ->where('assigned_to_user_id', $user->id)
-                    ->orWhere('reported_by_user_id', $user->id)
-                    ->orWhere('created_by', $user->id);
-            });
+            app(TaskAccessService::class)->applyVisibleToUserScope($query, $user);
         }
 
         return $query;

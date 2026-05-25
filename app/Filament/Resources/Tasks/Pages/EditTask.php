@@ -77,7 +77,7 @@ class EditTask extends EditRecord
                     'departments' => array_map('intval', (array) ($data['assignment_target_departments'] ?? [])),
                     'units' => array_map('intval', (array) ($data['assignment_target_units'] ?? [])),
                     'users' => array_map('intval', (array) ($data['assignment_target_users'] ?? [])),
-                ], $actor);
+                ], $actor, 'added_assignee');
 
                 TaskAssignmentHistory::query()->create([
                     'task_id' => $this->record->id,
@@ -133,7 +133,7 @@ class EditTask extends EditRecord
                     'departments' => array_map('intval', (array) ($data['assignment_target_departments'] ?? [])),
                     'units' => array_map('intval', (array) ($data['assignment_target_units'] ?? [])),
                     'users' => array_map('intval', (array) ($data['assignment_target_users'] ?? [])),
-                ], $actor);
+                ], $actor, 'reassigned');
 
                 TaskAssignmentHistory::query()->create([
                     'task_id' => $task->id,

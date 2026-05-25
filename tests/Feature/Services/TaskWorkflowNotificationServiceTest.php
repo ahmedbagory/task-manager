@@ -8,6 +8,7 @@ use App\Models\Task;
 use App\Models\User;
 use App\Models\WhatsappMessage;
 use App\Services\Authorization\RbacInitializationService;
+use App\Services\Notifications\TaskWorkflowNotificationService;
 use App\Services\Tasks\TaskAssignmentService;
 use App\Services\WhatsApp\WhatsAppInboxService;
 use App\Services\WhatsApp\WhatsAppWebhookService;
@@ -20,6 +21,23 @@ use Tests\TestCase;
 class TaskWorkflowNotificationServiceTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_notification_service_writes_database_notifications_directly(): void
+    {
+        $user = User::factory()->create();
+        $task = Task::factory()->create();
+
+        app(TaskWorkflowNotificationService::class)->notifyReporterConfirmationRequested($task, $user);
+
+        $notification = DB::table('notifications')->first();
+
+        $this->assertNotNull($notification);
+        $this->assertSame($user->getMorphClass(), $notification->notifiable_type);
+
+        $data = json_decode((string) $notification->data, true);
+
+        $this->assertSame('بانتظار تأكيد حل المشكلة', $data['title'] ?? null);
+    }
 
     public function test_new_whatsapp_message_notifies_dispatchers_and_admins(): void
     {
@@ -36,9 +54,9 @@ class TaskWorkflowNotificationServiceTest extends TestCase
 
         app(WhatsAppWebhookService::class)->handleInbound($this->sampleInboundPayload());
 
-        $this->assertNotificationWithTitleContains($admin, 'New WhatsApp message received');
-        $this->assertNotificationWithTitleContains($dispatcher, 'New WhatsApp message received');
-        $this->assertNoNotificationWithTitleContains($employee, 'New WhatsApp message received');
+        $this->assertNotificationWithTitleContains($admin, 'رسالة واتساب جديدة');
+        $this->assertNotificationWithTitleContains($dispatcher, 'رسالة واتساب جديدة');
+        $this->assertNoNotificationWithTitleContains($employee, 'رسالة واتساب جديدة');
     }
 
     public function test_message_conversion_to_task_notifies_dispatchers_and_admins(): void
@@ -67,8 +85,8 @@ class TaskWorkflowNotificationServiceTest extends TestCase
             actor: $dispatcher,
         );
 
-        $this->assertNotificationWithTitleContains($admin, "converted to task {$task->task_number}");
-        $this->assertNotificationWithTitleContains($dispatcher, "converted to task {$task->task_number}");
+        $this->assertNotificationWithTitleContains($admin, "تم تحويل رسالة واتساب إلى مهمة {$task->task_number}");
+        $this->assertNotificationWithTitleContains($dispatcher, "تم تحويل رسالة واتساب إلى مهمة {$task->task_number}");
     }
 
     public function test_task_assignment_notifies_assigned_employee(): void
@@ -89,7 +107,7 @@ class TaskWorkflowNotificationServiceTest extends TestCase
 
         app(TaskAssignmentService::class)->assignTask($task, $employee->id, $dispatcher, 'Please handle quickly');
 
-        $this->assertNotificationWithTitleContains($employee, "Task {$task->task_number} assigned to you");
+        $this->assertNotificationWithTitleContains($employee, 'تم إسناد مهمة جديدة إليك');
     }
 
     public function test_task_rejection_notifies_dispatchers_and_admins(): void
@@ -115,11 +133,11 @@ class TaskWorkflowNotificationServiceTest extends TestCase
 
         app(TaskAssignmentService::class)->rejectAssignment($assignment, $employee, 'Need electrical team');
 
-        $this->assertNotificationWithTitleContains($admin, "Task {$task->task_number} was rejected");
-        $this->assertNotificationWithTitleContains($dispatcher, "Task {$task->task_number} was rejected");
+        $this->assertNotificationWithTitleContains($admin, 'تم رفض المهمة');
+        $this->assertNotificationWithTitleContains($dispatcher, 'تم رفض المهمة');
     }
 
-    public function test_task_completion_notifies_dispatchers_and_admins(): void
+    public function test_reporter_confirmation_request_and_final_closure_notifications_are_sent(): void
     {
         app(RbacInitializationService::class)->seed();
 
@@ -132,18 +150,29 @@ class TaskWorkflowNotificationServiceTest extends TestCase
         $employee = User::factory()->create();
         $employee->assignRole(Rbac::EMPLOYEE);
 
+        $reporter = User::factory()->create();
+        $reporter->assignRole(Rbac::EMPLOYEE);
+
         $task = Task::factory()->create([
             'source' => TaskSource::MANUAL->value,
             'status' => TaskStatus::PENDING_ASSIGNMENT->value,
             'assigned_to_user_id' => null,
+            'reported_by_user_id' => $reporter->id,
         ]);
 
         $assignment = app(TaskAssignmentService::class)->assignTask($task, $employee->id, $dispatcher, 'Handle issue');
+        app(TaskAssignmentService::class)->acceptAssignment($assignment, $employee);
+        app(TaskAssignmentService::class)->startTask($assignment, $employee);
 
         app(TaskAssignmentService::class)->completeAssignedTask($assignment, $employee);
 
-        $this->assertNotificationWithTitleContains($admin, "Task {$task->task_number} completed");
-        $this->assertNotificationWithTitleContains($dispatcher, "Task {$task->task_number} completed");
+        $this->assertNotificationWithTitleContains($reporter, 'بانتظار تأكيد حل المشكلة');
+
+        app(TaskAssignmentService::class)->confirmResolution($task, $reporter);
+
+        $this->assertNotificationWithTitleContains($admin, "تم إكمال المهمة {$task->task_number}");
+        $this->assertNotificationWithTitleContains($dispatcher, "تم إكمال المهمة {$task->task_number}");
+        $this->assertNotificationWithTitleContains($employee, 'تم تأكيد حل المشكلة');
     }
 
     /**
@@ -183,10 +212,26 @@ class TaskWorkflowNotificationServiceTest extends TestCase
     private function assertNotificationWithTitleContains(User $user, string $text): void
     {
         $titles = $this->notificationTitlesForUser($user);
+        $allNotifications = DB::table('notifications')
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(function (object $row): array {
+                $data = json_decode((string) $row->data, true);
+
+                return [
+                    'notifiable_type' => $row->notifiable_type,
+                    'notifiable_id' => $row->notifiable_id,
+                    'title' => is_array($data) ? ($data['title'] ?? null) : null,
+                ];
+            })
+            ->all();
 
         $this->assertTrue(
             $titles->contains(fn (string $title): bool => str_contains($title, $text)),
-            "Expected notification containing [{$text}] was not found for user {$user->id}."
+            "Expected notification containing [{$text}] was not found for user {$user->id}. Actual titles: "
+            .json_encode($titles->all(), JSON_UNESCAPED_UNICODE)
+            .' All notifications: '
+            .json_encode($allNotifications, JSON_UNESCAPED_UNICODE)
         );
     }
 
@@ -206,8 +251,8 @@ class TaskWorkflowNotificationServiceTest extends TestCase
     private function notificationTitlesForUser(User $user): Collection
     {
         return DB::table('notifications')
-            ->where('notifiable_type', User::class)
-            ->where('notifiable_id', (string) $user->id)
+            ->where('notifiable_type', $user->getMorphClass())
+            ->where('notifiable_id', $user->getKey())
             ->orderByDesc('created_at')
             ->get()
             ->map(function (object $row): ?string {

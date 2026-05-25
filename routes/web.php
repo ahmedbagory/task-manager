@@ -33,6 +33,8 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/my-tasks/{task}/resume', [MyTaskWorkspaceController::class, 'resume'])->name('my-tasks.resume');
     Route::post('/my-tasks/{task}/complete', [MyTaskWorkspaceController::class, 'complete'])->name('my-tasks.complete');
     Route::post('/my-tasks/{task}/reject', [MyTaskWorkspaceController::class, 'reject'])->name('my-tasks.reject');
+    Route::post('/my-tasks/{task}/confirm-resolution', [MyTaskWorkspaceController::class, 'confirmResolution'])->name('my-tasks.confirm-resolution');
+    Route::post('/my-tasks/{task}/reject-resolution', [MyTaskWorkspaceController::class, 'rejectResolution'])->name('my-tasks.reject-resolution');
 
     Route::post('/my-tasks/{task}/comments', [MyTaskWorkspaceController::class, 'storeComment'])->name('my-tasks.comments.store');
     Route::post('/my-tasks/{task}/attachments', [MyTaskWorkspaceController::class, 'storeAttachment'])->name('my-tasks.attachments.store');

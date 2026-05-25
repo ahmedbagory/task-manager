@@ -10,6 +10,7 @@ enum TaskStatus: string
     case ACCEPTED = 'accepted';
     case IN_PROGRESS = 'in_progress';
     case WAIT_RESPONSE = 'wait_response';
+    case AWAITING_REPORTER_CONFIRMATION = 'awaiting_reporter_confirmation';
     case COMPLETED = 'completed';
     case CANCELLED = 'cancelled';
     case REJECTED = 'rejected';
@@ -35,6 +36,7 @@ enum TaskStatus: string
             self::ACCEPTED => __('Accepted'),
             self::IN_PROGRESS => __('In Progress'),
             self::WAIT_RESPONSE => __('Waiting Response'),
+            self::AWAITING_REPORTER_CONFIRMATION => __('Awaiting Reporter Confirmation'),
             self::COMPLETED => __('Completed'),
             self::CANCELLED => __('Cancelled'),
             self::REJECTED => __('Rejected'),
@@ -50,6 +52,7 @@ enum TaskStatus: string
             self::ACCEPTED => 'primary',
             self::IN_PROGRESS => 'primary',
             self::WAIT_RESPONSE => 'warning',
+            self::AWAITING_REPORTER_CONFIRMATION => 'warning',
             self::COMPLETED => 'success',
             self::CANCELLED => 'danger',
             self::REJECTED => 'danger',

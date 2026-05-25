@@ -11,6 +11,7 @@ use App\Models\TaskAssignmentHistory;
 use App\Models\TaskAttachment;
 use App\Models\User;
 use App\Services\Departments\DepartmentHierarchyService;
+use App\Services\Tasks\TaskAccessService;
 use App\Services\Tasks\TaskAssignmentService;
 use App\Services\Tasks\TaskAssignmentTargetResolver;
 use App\Support\Rbac;
@@ -93,6 +94,22 @@ class ViewTask extends ViewRecord
     }
 
     /**
+     * @return Collection<int, User>
+     */
+    public function getAssignees(): Collection
+    {
+        return app(TaskAccessService::class)->resolveAssignees($this->getTask());
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function getReporter(): ?array
+    {
+        return app(TaskAccessService::class)->resolveReporter($this->getTask());
+    }
+
+    /**
      * @return Collection<int, array<string, mixed>>
      */
     public function getActivityFeed(): Collection
@@ -167,7 +184,7 @@ class ViewTask extends ViewRecord
                     'departments' => array_map('intval', (array) ($data['assignment_target_departments'] ?? [])),
                     'units' => array_map('intval', (array) ($data['assignment_target_units'] ?? [])),
                     'users' => array_map('intval', (array) ($data['assignment_target_users'] ?? [])),
-                ], $actor);
+                ], $actor, 'added_assignee');
 
                 TaskAssignmentHistory::query()->create([
                     'task_id' => $this->getTask()->id,
@@ -227,7 +244,7 @@ class ViewTask extends ViewRecord
                     'departments' => array_map('intval', (array) ($data['assignment_target_departments'] ?? [])),
                     'units' => array_map('intval', (array) ($data['assignment_target_units'] ?? [])),
                     'users' => array_map('intval', (array) ($data['assignment_target_users'] ?? [])),
-                ], $actor);
+                ], $actor, 'reassigned');
 
                 TaskAssignmentHistory::query()->create([
                     'task_id' => $task->id,
@@ -414,6 +431,7 @@ class ViewTask extends ViewRecord
             'department.parent',
             'category',
             'reportedByUser',
+            'whatsappContact.user',
             'createdByUser',
             'updatedByUser',
             'assignedToUser.department.parent',

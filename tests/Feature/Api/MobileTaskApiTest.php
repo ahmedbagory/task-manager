@@ -266,12 +266,72 @@ class MobileTaskApiTest extends TestCase
 
         $this->postJson("/api/mobile/my-tasks/{$task->id}/complete")
             ->assertOk()
-            ->assertJsonPath('data.task.status.value', TaskStatus::COMPLETED->value);
+            ->assertJsonPath('data.task.status.value', TaskStatus::AWAITING_REPORTER_CONFIRMATION->value);
 
         $this->assertSame(
             TaskAssignmentStatus::COMPLETED,
             $task->fresh()->assignments()->latest('id')->first()->status
         );
+    }
+
+    public function test_reporter_can_confirm_or_reject_resolution_using_allowed_actions_flow(): void
+    {
+        app(RbacInitializationService::class)->seed();
+
+        $dispatcher = User::factory()->create();
+        $dispatcher->assignRole(Rbac::DISPATCHER);
+
+        $employee = User::factory()->create();
+        $employee->assignRole(Rbac::EMPLOYEE);
+
+        $reporter = User::factory()->create();
+        $reporter->assignRole(Rbac::EMPLOYEE);
+
+        $task = Task::factory()->create([
+            'reported_by_user_id' => $reporter->id,
+            'assigned_to_user_id' => null,
+            'status' => TaskStatus::PENDING_ASSIGNMENT->value,
+            'source' => TaskSource::MANUAL->value,
+        ]);
+
+        $assignment = app(TaskAssignmentService::class)->assignTask(
+            $task,
+            $employee->id,
+            $dispatcher,
+            'Please handle this issue.'
+        );
+        app(TaskAssignmentService::class)->acceptAssignment($assignment, $employee);
+        app(TaskAssignmentService::class)->startTask($assignment, $employee);
+        app(TaskAssignmentService::class)->completeAssignedTask($assignment, $employee);
+
+        Sanctum::actingAs($reporter);
+
+        $this->getJson("/api/mobile/my-tasks/{$task->id}")
+            ->assertOk()
+            ->assertJsonPath('data.task.current_user_role_on_task', 'reporter')
+            ->assertJsonPath('data.task.allowed_actions.can_confirm_resolution', true)
+            ->assertJsonPath('data.task.allowed_actions.can_reject_resolution', true)
+            ->assertJsonPath('data.task.allowed_actions.can_mark_resolved', false);
+
+        $this->postJson("/api/mobile/my-tasks/{$task->id}/reject-resolution", [
+            'comment' => 'المشكلة ما زالت قائمة.',
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.task.status.value', TaskStatus::IN_PROGRESS->value);
+
+        $this->assertSame(
+            TaskAssignmentStatus::ACCEPTED,
+            $task->fresh()->assignments()->latest('id')->first()->status
+        );
+
+        app(TaskAssignmentService::class)->completeAssignedTask(
+            $task->fresh()->assignments()->latest('id')->first(),
+            $employee,
+        );
+
+        $this->postJson("/api/mobile/my-tasks/{$task->id}/confirm-resolution")
+            ->assertOk()
+            ->assertJsonPath('data.task.status.value', TaskStatus::COMPLETED->value);
     }
 
     public function test_reject_requires_reason_and_updates_task_status_to_pending_assignment(): void

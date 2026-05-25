@@ -7,6 +7,8 @@ use App\Enums\TaskStatus;
 use App\Http\Controllers\Api\Concerns\RespondsWithJson;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\MyTasks\IndexMyTasksRequest;
+use App\Http\Requests\Api\MyTasks\ConfirmTaskResolutionRequest;
+use App\Http\Requests\Api\MyTasks\RejectTaskResolutionRequest;
 use App\Http\Requests\Api\MyTasks\RejectTaskRequest;
 use App\Http\Requests\Api\MyTasks\StoreTaskAttachmentRequest;
 use App\Http\Requests\Api\MyTasks\StoreTaskCommentRequest;
@@ -18,8 +20,8 @@ use App\Http\Resources\Api\TaskListResource;
 use App\Models\Task;
 use App\Models\TaskAssignment;
 use App\Models\TaskAssignmentHistory;
-use App\Models\TaskAssignmentTarget;
 use App\Models\User;
+use App\Services\Tasks\TaskAccessService;
 use App\Services\Tasks\TaskAssignmentService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -34,40 +36,36 @@ class MyTaskController extends Controller
 {
     use RespondsWithJson;
 
+    public function __construct(
+        private readonly TaskAccessService $taskAccessService,
+    ) {}
+
     public function index(IndexMyTasksRequest $request): JsonResponse
     {
         /** @var User $user */
         $user = $request->user();
 
-        if ($user->cannot('viewAny', Task::class)) {
-            return $this->errorResponse(message: 'Forbidden.', status: 403);
-        }
-
         $validated = $request->validated();
         $perPage = (int) ($validated['per_page'] ?? 15);
 
         $tasksQuery = Task::query()
-            ->where(function (Builder $query) use ($user): void {
-                $query->where('assigned_to_user_id', $user->id)
-                    ->orWhere(function (Builder $q) use ($user): void {
-                        $q->whereIn('status', [
-                            TaskStatus::NEW->value,
-                            TaskStatus::PENDING_ASSIGNMENT->value,
-                            TaskStatus::ASSIGNED->value,
-                        ]);
-                        $this->applyTargetScope($q, $user);
-                    });
-            })
             ->with([
                 'department.parent',
                 'category',
                 'latestAssignment.assignedByUser',
+                'assignedToUser',
                 'reportedByUser',
+                'whatsappContact.user',
                 'createdByUser',
+                'assignments.assignedToUser',
                 'assignmentTargets',
+                'resolutionSubmittedByUser',
+                'reporterConfirmedByUser',
             ])
             ->withCount('comments')
             ->orderByDesc('updated_at');
+
+        $this->taskAccessService->applyVisibleToUserScope($tasksQuery, $user);
 
         if (! empty($validated['status'])) {
             $tasksQuery->where('status', (string) $validated['status']);
@@ -163,7 +161,7 @@ class MyTaskController extends Controller
             handler: function (TaskAssignment $assignment, User $user) use ($taskAssignmentService): void {
                 $taskAssignmentService->completeAssignedTask($assignment, $user);
             },
-            successMessage: 'Task completed successfully.',
+            successMessage: 'Task submitted for reporter confirmation successfully.',
         );
     }
 
@@ -237,6 +235,84 @@ class MyTaskController extends Controller
                 $taskAssignmentService->rejectAssignment($assignment, $user, $reason);
             },
             successMessage: 'Task rejected successfully.',
+        );
+    }
+
+    public function confirmResolution(
+        ConfirmTaskResolutionRequest $request,
+        int $task,
+        TaskAssignmentService $taskAssignmentService
+    ): JsonResponse {
+        /** @var User $user */
+        $user = $request->user();
+        $taskModel = $this->resolveUserTask($user, $task);
+
+        if (! $taskModel) {
+            return $this->errorResponse(message: 'Task not found.', status: 404);
+        }
+
+        if ($user->cannot('confirmResolution', $taskModel)) {
+            return $this->errorResponse(message: 'Forbidden.', status: 403);
+        }
+
+        try {
+            $taskAssignmentService->confirmResolution(
+                task: $taskModel,
+                actor: $user,
+                comment: $request->validated('comment'),
+            );
+        } catch (ValidationException $exception) {
+            return $this->errorResponse(
+                message: 'Validation failed.',
+                status: 422,
+                errors: $exception->errors(),
+            );
+        }
+
+        $taskModel->refresh()->load($this->detailRelations());
+
+        return $this->successResponse(
+            data: ['task' => (new TaskDetailResource($taskModel))->resolve()],
+            message: 'Task resolution confirmed successfully.',
+        );
+    }
+
+    public function rejectResolution(
+        RejectTaskResolutionRequest $request,
+        int $task,
+        TaskAssignmentService $taskAssignmentService
+    ): JsonResponse {
+        /** @var User $user */
+        $user = $request->user();
+        $taskModel = $this->resolveUserTask($user, $task);
+
+        if (! $taskModel) {
+            return $this->errorResponse(message: 'Task not found.', status: 404);
+        }
+
+        if ($user->cannot('rejectResolution', $taskModel)) {
+            return $this->errorResponse(message: 'Forbidden.', status: 403);
+        }
+
+        try {
+            $taskAssignmentService->rejectResolution(
+                task: $taskModel,
+                actor: $user,
+                comment: (string) $request->validated('comment'),
+            );
+        } catch (ValidationException $exception) {
+            return $this->errorResponse(
+                message: 'Validation failed.',
+                status: 422,
+                errors: $exception->errors(),
+            );
+        }
+
+        $taskModel->refresh()->load($this->detailRelations());
+
+        return $this->successResponse(
+            data: ['task' => (new TaskDetailResource($taskModel))->resolve()],
+            message: 'Task resolution rejected successfully.',
         );
     }
 
@@ -319,6 +395,10 @@ class MyTaskController extends Controller
             return $this->errorResponse(message: 'Attachment not found.', status: 404);
         }
 
+        if ($user->cannot('viewAttachments', $taskModel)) {
+            return $this->errorResponse(message: 'Forbidden.', status: 403);
+        }
+
         $disk = Storage::disk($attachmentModel->disk);
 
         if (! $disk->exists($attachmentModel->path)) {
@@ -386,25 +466,18 @@ class MyTaskController extends Controller
      */
     private function resolveUserTask(User $user, int $taskId, array $with = []): ?Task
     {
-        return Task::query()
+        $query = Task::query()
             ->whereKey($taskId)
-            ->where(function (Builder $query) use ($user): void {
-                $query->where('assigned_to_user_id', $user->id)
-                    ->orWhere(function (Builder $q) use ($user): void {
-                        $this->applyTargetScope($q, $user);
-                    });
-            })
-            ->with(array_merge($this->detailRelations(), $with))
-            ->first();
+            ->with(array_merge($this->detailRelations(), $with));
+
+        $this->taskAccessService->applyVisibleToUserScope($query, $user);
+
+        return $query->first();
     }
 
     private function resolveUserAssignment(Task $task, User $user): ?TaskAssignment
     {
-        return $task->assignments()
-            ->where('assigned_to_user_id', $user->id)
-            ->whereIn('status', [TaskAssignmentStatus::ASSIGNED->value, TaskAssignmentStatus::ACCEPTED->value])
-            ->orderByDesc('id')
-            ->first();
+        return $this->taskAccessService->resolveUserAssignment($task, $user);
     }
 
     private function claimTargetedTask(Task $task, User $user): JsonResponse
@@ -469,26 +542,6 @@ class MyTaskController extends Controller
         );
     }
 
-    private function applyTargetScope(Builder $query, User $user): void
-    {
-        $query->whereHas('assignmentTargets', function (Builder $tq) use ($user): void {
-            $tq->where('target_type', TaskAssignmentTarget::LEGACY_ALL)
-                ->orWhere(function (Builder $q) use ($user): void {
-                    $q->whereIn('target_type', TaskAssignmentTarget::userTargetTypes())
-                        ->where('target_id', $user->id);
-                });
-
-            $departmentIds = array_filter([$user->department_id, $user->department?->parent_id]);
-
-            if ($departmentIds !== []) {
-                $tq->orWhere(function (Builder $q) use ($departmentIds): void {
-                    $q->whereIn('target_type', TaskAssignmentTarget::departmentTargetTypes())
-                        ->whereIn('target_id', $departmentIds);
-                });
-            }
-        });
-    }
-
     /**
      * @return array<int, string>
      */
@@ -501,12 +554,15 @@ class MyTaskController extends Controller
             'assignedToUser',
             'latestAssignment.assignedByUser',
             'reportedByUser',
+            'whatsappContact.user',
             'createdByUser',
             'assignments.assignedByUser',
             'assignments.assignedToUser',
             'comments.user',
             'attachments.user',
             'assignmentTargets',
+            'resolutionSubmittedByUser',
+            'reporterConfirmedByUser',
         ];
     }
 

@@ -22,6 +22,8 @@ class TaskDetailResource extends JsonResource
         $base['assignments'] = TaskAssignmentResource::collection($this->assignments)->resolve();
         $base['comments'] = TaskCommentResource::collection($this->comments)->resolve();
         $base['attachments'] = TaskAttachmentResource::collection($this->attachments)->resolve();
+        $base['whatsapp_contact_id'] = $this->whatsapp_contact_id;
+        $base['reporter_confirmation_status'] = $this->reporter_confirmation_status;
 
         if ($this->relationLoaded('assignmentTargets')) {
             $base['assignment_targets'] = $this->assignmentTargets->map(fn ($target): array => [

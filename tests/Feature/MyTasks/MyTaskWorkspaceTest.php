@@ -103,7 +103,7 @@ class MyTaskWorkspaceTest extends TestCase
             ->post(route('my-tasks.complete', $task))
             ->assertRedirect();
 
-        $this->assertSame(TaskStatus::COMPLETED, $task->fresh()->status);
+        $this->assertSame(TaskStatus::AWAITING_REPORTER_CONFIRMATION, $task->fresh()->status);
         $this->assertSame(TaskAssignmentStatus::COMPLETED, $task->fresh()->assignments()->latest('id')->first()->status);
     }
 

@@ -32,7 +32,7 @@ class WhatsAppInboxService
     {
         Gate::forUser($actor)->authorize('convertToTask', $message);
 
-        return DB::transaction(function () use ($message, $data, $actor): Task {
+        $task = DB::transaction(function () use ($message, $data, $actor): Task {
             $lockedMessage = WhatsappMessage::query()
                 ->lockForUpdate()
                 ->with('task')
@@ -66,23 +66,23 @@ class WhatsAppInboxService
                     'departments' => array_map('intval', (array) ($data['assignment_target_departments'] ?? [])),
                     'units' => array_map('intval', (array) ($data['assignment_target_units'] ?? [])),
                     'users' => array_map('intval', (array) ($data['assignment_target_users'] ?? [])),
-                ], $actor);
+                ], $actor, 'new_assignment');
             }
-
-            DB::afterCommit(function () use ($lockedMessage, $task): void {
-                $freshMessage = WhatsappMessage::query()->find($lockedMessage->id);
-                $freshTask = Task::query()->find($task->id);
-
-                if ($freshMessage && $freshTask) {
-                    $this->taskWorkflowNotificationService->notifyWhatsappMessageConvertedToTask(
-                        message: $freshMessage,
-                        task: $freshTask,
-                    );
-                }
-            });
 
             return $task->fresh();
         });
+
+        $freshMessage = WhatsappMessage::query()->with('contact')->find($message->id);
+        $freshTask = Task::query()->find($task->id);
+
+        if ($freshMessage && $freshTask) {
+            $this->taskWorkflowNotificationService->notifyWhatsappMessageConvertedToTask(
+                message: $freshMessage,
+                task: $freshTask,
+            );
+        }
+
+        return $task;
     }
 
     /**
@@ -123,6 +123,8 @@ class WhatsAppInboxService
             'description' => $description !== '' ? $description : null,
             'department_id' => filled($selectedDepartmentId) ? $selectedDepartmentId : $contactDepartmentId,
             'category_id' => Arr::get($data, 'category_id'),
+            'reported_by_user_id' => Arr::get($data, 'reported_by_user_id', $routingContact?->user_id),
+            'whatsapp_contact_id' => $routingContact?->id ?? $message->contact_id,
             'priority' => Arr::get($data, 'priority'),
             'location' => filled($selectedLocation) ? $selectedLocation : $contactLocation,
             'due_at' => Arr::get($data, 'due_at'),

@@ -24,7 +24,12 @@ class FcmNotificationService
     /**
      * Send push notification when a new task is assigned.
      */
-    public function notifyNewTaskAssigned(Task $task, User $assignee): void
+    public function notifyNewTaskAssigned(
+        Task $task,
+        User $assignee,
+        ?User $actor = null,
+        string $context = 'new_assignment'
+    ): void
     {
         $tokens = $this->tokensForUser($assignee);
 
@@ -37,14 +42,14 @@ class FcmNotificationService
             return;
         }
 
-        $title = 'New Task Assigned';
-        $body = "Task \"{$task->title}\" has been assigned to you.";
+        [$title, $body] = $this->assignmentCopy($task, $actor?->name ?? 'النظام', $context);
 
         $deliveredCount = $this->sendTokens($tokens, $title, $body, [
             'type' => 'new_task',
             'task_id' => (string) $task->id,
             'task_title' => $task->title,
             'task_number' => $task->task_number ?? '',
+            'assignment_context' => $context,
             'route' => '/tasks/' . $task->id,
         ]);
 
@@ -55,6 +60,7 @@ class FcmNotificationService
             'token_count' => count($tokens),
             'delivered_count' => $deliveredCount,
             'failed_count' => count($tokens) - $deliveredCount,
+            'context' => $context,
         ]);
     }
 
@@ -115,6 +121,9 @@ class FcmNotificationService
             'started' => __('started'),
             'completed' => __('completed'),
             'rejected' => __('rejected'),
+            'resolution_submitted' => __('submitted for confirmation'),
+            'reporter_confirmed' => __('confirmed'),
+            'reporter_rejected' => __('reopened'),
         ];
 
         $label = $actionLabels[$action] ?? $action;
@@ -166,7 +175,12 @@ class FcmNotificationService
      *
      * @param  array<int, int>  $resolvedUserIds
      */
-    public function notifyTaskTargetsAssigned(Task $task, array $resolvedUserIds): void
+    public function notifyTaskTargetsAssigned(
+        Task $task,
+        array $resolvedUserIds,
+        ?User $actor = null,
+        string $context = 'new_assignment'
+    ): void
     {
         $uniqueUserIds = collect($resolvedUserIds)
             ->map(fn ($id) => (int) $id)
@@ -180,13 +194,13 @@ class FcmNotificationService
 
         $users = User::query()->whereIn('id', $uniqueUserIds)->get();
 
-        $title = 'New Task Available';
-        $body = "Task \"{$task->title}\" has been assigned to you.";
+        [$title, $body] = $this->assignmentCopy($task, $actor?->name ?? 'النظام', $context);
         $data = [
             'type' => 'new_task',
             'task_id' => (string) $task->id,
             'task_title' => $task->title,
             'task_number' => $task->task_number ?? '',
+            'assignment_context' => $context,
         ];
 
         $totalTokens = 0;
@@ -209,7 +223,51 @@ class FcmNotificationService
             'token_count' => $totalTokens,
             'success_count' => $successCount,
             'failure_count' => $failureCount,
+            'context' => $context,
         ]);
+    }
+
+    public function notifyReporterConfirmationRequested(Task $task, User $recipient): void
+    {
+        $this->sendNotificationToUser(
+            recipient: $recipient,
+            title: 'بانتظار تأكيد حل المشكلة',
+            body: 'تم إرسال المهمة: '.$task->title.' للتأكيد. هل تم حل المشكلة؟',
+            data: [
+                'type' => 'reporter_confirmation_request',
+                'task_id' => (string) $task->id,
+                'task_number' => $task->task_number ?? '',
+                'route' => '/tasks/' . $task->id,
+            ],
+        );
+    }
+
+    /**
+     * @param  array<int, int>  $resolvedUserIds
+     */
+    public function notifyReporterRejectedResolution(Task $task, array $resolvedUserIds): void
+    {
+        $this->notifyUsers(
+            task: $task,
+            resolvedUserIds: $resolvedUserIds,
+            title: 'المبلّغ أكد أن المشكلة لم تُحل',
+            body: 'تم رفض إغلاق المهمة: '.$task->title.'. راجع التعليق وأكمل المتابعة.',
+            type: 'reporter_rejected_resolution',
+        );
+    }
+
+    /**
+     * @param  array<int, int>  $resolvedUserIds
+     */
+    public function notifyReporterConfirmedResolution(Task $task, array $resolvedUserIds): void
+    {
+        $this->notifyUsers(
+            task: $task,
+            resolvedUserIds: $resolvedUserIds,
+            title: 'تم تأكيد حل المشكلة',
+            body: 'أكد المبلّغ حل المشكلة وتم إغلاق المهمة: '.$task->title,
+            type: 'reporter_confirmed_resolution',
+        );
     }
 
     /**
@@ -491,5 +549,58 @@ class FcmNotificationService
     private function base64UrlEncode(string $value): string
     {
         return rtrim(strtr(base64_encode($value), '+/', '-_'), '=');
+    }
+
+    /**
+     * @return array{0: string, 1: string}
+     */
+    private function assignmentCopy(Task $task, string $actorName, string $context): array
+    {
+        return match ($context) {
+            'added_assignee' => [
+                'تمت إضافتك إلى مهمة',
+                'تمت إضافتك ضمن فريق العمل على المهمة: '.$task->title,
+            ],
+            'reassigned' => [
+                'تمت إعادة تعيين مهمة إليك',
+                'تم نقل/إعادة تعيين المهمة: '.$task->title.' إليك بواسطة '.$actorName,
+            ],
+            default => [
+                'تم إسناد مهمة جديدة إليك',
+                'تم إسناد المهمة: '.$task->title.' إليك بواسطة '.$actorName,
+            ],
+        };
+    }
+
+    /**
+     * @param  array<int, int>  $resolvedUserIds
+     */
+    private function notifyUsers(Task $task, array $resolvedUserIds, string $title, string $body, string $type): void
+    {
+        $uniqueUserIds = collect($resolvedUserIds)
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($uniqueUserIds === []) {
+            return;
+        }
+
+        $users = User::query()->whereIn('id', $uniqueUserIds)->get();
+
+        foreach ($users as $user) {
+            $this->sendNotificationToUser(
+                recipient: $user,
+                title: $title,
+                body: $body,
+                data: [
+                    'type' => $type,
+                    'task_id' => (string) $task->id,
+                    'task_number' => $task->task_number ?? '',
+                    'route' => '/tasks/' . $task->id,
+                ],
+            );
+        }
     }
 }

@@ -4,19 +4,22 @@
         $workflowStatus = $task->workflowStatus();
         $latestAssignment = $task->latestAssignment;
         $resolvedTargetUsers = $this->getResolvedTargetUsers();
+        $assignees = $this->getAssignees();
+        $reporter = $this->getReporter();
         $activityFeed = $this->getActivityFeed();
         $previewItems = $this->getAttachmentPreviewItems();
         $comments = $task->comments->sortBy('created_at')->values();
         $hasTargets = $task->hasValidAssignmentTargets();
         $hasDirectAssignee = $task->hasActiveAssignee() && $task->assignedToUser !== null;
-        $assignmentAudienceCount = $resolvedTargetUsers->count() ?: ($hasDirectAssignee ? 1 : 0);
-        $targetPreview = $resolvedTargetUsers->take(6);
-        $remainingTargetCount = max($resolvedTargetUsers->count() - $targetPreview->count(), 0);
+        $assignmentAudienceCount = $assignees->count() ?: ($hasDirectAssignee ? 1 : 0);
+        $targetPreview = $assignees->take(6);
+        $remainingTargetCount = max($assignees->count() - $targetPreview->count(), 0);
         $infoItems = [
             ['label' => __('القسم / الوحدة'), 'value' => $task->department?->hierarchy_name ?? '—'],
             ['label' => __('التصنيف'), 'value' => $task->category?->name ?? '—'],
             ['label' => __('الموعد المستهدف'), 'value' => $task->due_at?->format('Y-m-d H:i') ?? '—'],
             ['label' => __('الموقع'), 'value' => $task->location ?: '—'],
+            ['label' => __('المبلّغ / الطالب'), 'value' => trim(implode(' - ', array_filter([$reporter['name'] ?? null, $reporter['phone'] ?? null]))) ?: '—'],
         ];
     @endphp
 
@@ -93,13 +96,17 @@
                         </div>
                     </dl>
 
-                    @if ($hasDirectAssignee)
+                    @if ($assignees->isNotEmpty())
                         <div class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-white/5">
                             <div class="flex items-start justify-between gap-3">
                                 <div class="space-y-1">
-                                    <p class="text-sm font-semibold text-gray-950 dark:text-white">{{ __('الموظف المنفذ') }}</p>
-                                    <p class="text-base font-semibold text-gray-950 dark:text-white">{{ $task->assignedToUser->name }}</p>
-                                    <p class="text-sm text-gray-500 dark:text-gray-400">{{ $task->assignedToUser->department?->hierarchy_name ?? '—' }}</p>
+                                    <p class="text-sm font-semibold text-gray-950 dark:text-white">{{ __('فريق التنفيذ') }}</p>
+                                    <p class="text-base font-semibold text-gray-950 dark:text-white">
+                                        {{ $assignees->pluck('name')->implode('، ') }}
+                                    </p>
+                                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                                        {{ __('المبلّغ') }}: {{ trim(implode(' - ', array_filter([$reporter['name'] ?? null, $reporter['phone'] ?? null]))) ?: '—' }}
+                                    </p>
                                 </div>
 
                                 @if ($latestAssignment)

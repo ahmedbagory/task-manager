@@ -4,13 +4,16 @@ namespace App\Http\Controllers\MyTasks;
 
 use App\Enums\TaskStatus;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\MyTasks\ConfirmTaskResolutionRequest;
 use App\Http\Requests\MyTasks\RejectTaskAssignmentRequest;
+use App\Http\Requests\MyTasks\RejectTaskResolutionRequest;
 use App\Http\Requests\MyTasks\StoreTaskAttachmentRequest;
 use App\Http\Requests\MyTasks\StoreTaskCommentRequest;
 use App\Models\Task;
 use App\Models\TaskAssignment;
 use App\Models\TaskAttachment;
 use App\Models\User;
+use App\Services\Tasks\TaskAccessService;
 use App\Services\Tasks\TaskAssignmentService;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
@@ -22,6 +25,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class MyTaskWorkspaceController extends Controller
 {
+    public function __construct(
+        private readonly TaskAccessService $taskAccessService,
+    ) {}
+
     public function index(Request $request): View
     {
         /** @var User $user */
@@ -31,9 +38,10 @@ class MyTaskWorkspaceController extends Controller
         $statusValues = TaskStatus::values();
 
         $tasksQuery = Task::query()
-            ->where('assigned_to_user_id', $user->id)
             ->with(['department.parent', 'category'])
             ->orderByDesc('updated_at');
+
+        $this->taskAccessService->applyVisibleToUserScope($tasksQuery, $user);
 
         if (in_array($selectedStatus, $statusValues, true)) {
             $tasksQuery->where('status', $selectedStatus);
@@ -70,11 +78,16 @@ class MyTaskWorkspaceController extends Controller
 
         return view('my-tasks.show', [
             'task' => $task,
-            'currentAssignment' => $this->resolveUserAssignment($task, $user),
+            'currentAssignment' => $this->resolveUserAssignment($task, $user, abortIfMissing: false),
             'timeline' => $this->buildTimeline($task),
             'canRespond' => $user->can('respondToAssignment', $task),
             'canComment' => $user->can('addWorkspaceComment', $task),
             'canUploadAttachment' => $user->can('uploadWorkspaceAttachment', $task),
+            'canConfirmResolution' => $user->can('confirmResolution', $task),
+            'canRejectResolution' => $user->can('rejectResolution', $task),
+            'currentUserRole' => $this->taskAccessService->resolveCurrentUserRole($task, $user),
+            'assignees' => $this->taskAccessService->resolveAssignees($task),
+            'reporter' => $this->taskAccessService->resolveReporter($task),
         ]);
     }
 
@@ -85,8 +98,14 @@ class MyTaskWorkspaceController extends Controller
         /** @var User $user */
         $user = $request->user();
 
+        $assignment = $this->resolveUserAssignment($task, $user, abortIfMissing: false);
+
+        if (! $assignment) {
+            return $this->claimTargetedTask($task, $user);
+        }
+
         try {
-            $taskAssignmentService->acceptAssignment($this->resolveUserAssignment($task, $user), $user);
+            $taskAssignmentService->acceptAssignment($assignment, $user);
         } catch (ValidationException $exception) {
             return $this->redirectBackWithValidationError($exception);
         }
@@ -123,7 +142,7 @@ class MyTaskWorkspaceController extends Controller
             return $this->redirectBackWithValidationError($exception);
         }
 
-        return back()->with('status', __('Task marked as completed.'));
+        return back()->with('status', __('Task submitted for reporter confirmation.'));
     }
 
     public function waitResponse(Request $request, Task $task, TaskAssignmentService $taskAssignmentService): RedirectResponse
@@ -222,6 +241,44 @@ class MyTaskWorkspaceController extends Controller
         return back()->with('status', __('Attachment uploaded.'));
     }
 
+    public function confirmResolution(
+        ConfirmTaskResolutionRequest $request,
+        Task $task,
+        TaskAssignmentService $taskAssignmentService
+    ): RedirectResponse {
+        $this->authorize('confirmResolution', $task);
+
+        /** @var User $user */
+        $user = $request->user();
+
+        try {
+            $taskAssignmentService->confirmResolution($task, $user, $request->validated('comment'));
+        } catch (ValidationException $exception) {
+            return $this->redirectBackWithValidationError($exception);
+        }
+
+        return back()->with('status', __('Task resolution confirmed.'));
+    }
+
+    public function rejectResolution(
+        RejectTaskResolutionRequest $request,
+        Task $task,
+        TaskAssignmentService $taskAssignmentService
+    ): RedirectResponse {
+        $this->authorize('rejectResolution', $task);
+
+        /** @var User $user */
+        $user = $request->user();
+
+        try {
+            $taskAssignmentService->rejectResolution($task, $user, (string) $request->validated('comment'));
+        } catch (ValidationException $exception) {
+            return $this->redirectBackWithValidationError($exception);
+        }
+
+        return back()->with('status', __('Task returned for follow-up.'));
+    }
+
     public function downloadAttachment(Request $request, Task $task, TaskAttachment $attachment): StreamedResponse
     {
         $this->authorize('viewAssignedWorkspace', $task);
@@ -229,7 +286,7 @@ class MyTaskWorkspaceController extends Controller
         /** @var User $user */
         $user = $request->user();
 
-        if ($task->assigned_to_user_id !== $user->id || $attachment->task_id !== $task->id) {
+        if ($attachment->task_id !== $task->id || $user->cannot('viewAttachments', $task)) {
             abort(403);
         }
 
@@ -277,14 +334,11 @@ class MyTaskWorkspaceController extends Controller
         return $task && $user->can('viewAttachments', $task);
     }
 
-    private function resolveUserAssignment(Task $task, User $user): TaskAssignment
+    private function resolveUserAssignment(Task $task, User $user, bool $abortIfMissing = true): ?TaskAssignment
     {
-        $assignment = $task->assignments()
-            ->where('assigned_to_user_id', $user->id)
-            ->orderByDesc('id')
-            ->first();
+        $assignment = $this->taskAccessService->resolveUserAssignment($task, $user);
 
-        if (! $assignment) {
+        if (! $assignment && $abortIfMissing) {
             abort(403);
         }
 
@@ -359,5 +413,58 @@ class MyTaskWorkspaceController extends Controller
         return back()
             ->withErrors($exception->errors())
             ->withInput();
+    }
+
+    private function claimTargetedTask(Task $task, User $user): RedirectResponse
+    {
+        try {
+            DB::transaction(function () use ($task, $user): void {
+                $lockedTask = Task::query()->lockForUpdate()->findOrFail($task->id);
+
+                if (in_array($lockedTask->status->value, [
+                    TaskStatus::COMPLETED->value,
+                    TaskStatus::CANCELLED->value,
+                ], true)) {
+                    throw ValidationException::withMessages([
+                        'task' => ['Task is already completed or cancelled.'],
+                    ]);
+                }
+
+                $activeExists = $lockedTask->assignments()
+                    ->whereIn('status', [TaskAssignmentStatus::ASSIGNED->value, TaskAssignmentStatus::ACCEPTED->value])
+                    ->exists();
+
+                if ($activeExists) {
+                    throw ValidationException::withMessages([
+                        'task' => ['Task already has an active assignment.'],
+                    ]);
+                }
+
+                $lockedTask->assignments()->create([
+                    'assigned_to_user_id' => $user->id,
+                    'assigned_by_user_id' => $user->id,
+                    'status' => TaskAssignmentStatus::ACCEPTED->value,
+                    'assigned_at' => now(),
+                    'accepted_at' => now(),
+                ]);
+
+                $lockedTask->forceFill([
+                    'assigned_to_user_id' => $user->id,
+                    'status' => TaskStatus::ACCEPTED->value,
+                    'updated_by' => $user->id,
+                ])->save();
+
+                TaskAssignmentHistory::query()->create([
+                    'task_id' => $lockedTask->id,
+                    'action' => 'accepted',
+                    'to_user_id' => $user->id,
+                    'performed_by' => $user->id,
+                ]);
+            });
+        } catch (ValidationException $exception) {
+            return $this->redirectBackWithValidationError($exception);
+        }
+
+        return back()->with('status', __('Task accepted successfully.'));
     }
 }

@@ -21,6 +21,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'department_id',
     'category_id',
     'reported_by_user_id',
+    'whatsapp_contact_id',
     'reported_by_phone',
     'assigned_to_user_id',
     'priority',
@@ -32,6 +33,11 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'completed_at',
     'created_by',
     'updated_by',
+    'resolution_submitted_by_user_id',
+    'resolution_submitted_at',
+    'reporter_confirmation_status',
+    'reporter_confirmed_by_user_id',
+    'reporter_confirmed_at',
 ])]
 class Task extends Model
 {
@@ -47,12 +53,26 @@ class Task extends Model
             'due_at' => 'datetime',
             'started_at' => 'datetime',
             'completed_at' => 'datetime',
+            'resolution_submitted_at' => 'datetime',
+            'reporter_confirmed_at' => 'datetime',
         ];
     }
 
     public function hasActiveAssignee(): bool
     {
-        return filled($this->assigned_to_user_id);
+        if (filled($this->assigned_to_user_id)) {
+            return true;
+        }
+
+        if ($this->relationLoaded('assignments')) {
+            return $this->assignments->contains(
+                fn (TaskAssignment $assignment): bool => in_array($assignment->status->value, ['assigned', 'accepted'], true)
+            );
+        }
+
+        return $this->assignments()
+            ->whereIn('status', ['assigned', 'accepted'])
+            ->exists();
     }
 
     public function hasValidAssignmentTargets(): bool
@@ -77,8 +97,10 @@ class Task extends Model
             TaskStatus::ACCEPTED,
             TaskStatus::IN_PROGRESS,
             TaskStatus::WAIT_RESPONSE,
+            TaskStatus::AWAITING_REPORTER_CONFIRMATION,
             TaskStatus::COMPLETED,
             TaskStatus::CANCELLED,
+            TaskStatus::REJECTED,
         ], true)) {
             return $status;
         }
@@ -121,6 +143,11 @@ class Task extends Model
         return $this->belongsTo(User::class, 'reported_by_user_id');
     }
 
+    public function whatsappContact(): BelongsTo
+    {
+        return $this->belongsTo(WhatsappContact::class, 'whatsapp_contact_id');
+    }
+
     public function assignedToUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'assigned_to_user_id');
@@ -134,6 +161,16 @@ class Task extends Model
     public function updatedByUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'updated_by');
+    }
+
+    public function resolutionSubmittedByUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'resolution_submitted_by_user_id');
+    }
+
+    public function reporterConfirmedByUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'reporter_confirmed_by_user_id');
     }
 
     public function assignments(): HasMany

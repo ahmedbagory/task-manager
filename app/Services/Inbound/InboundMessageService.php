@@ -24,7 +24,9 @@ class InboundMessageService
         $providerMessageId = $this->resolveProviderMessageId($data);
 
         try {
-            return DB::transaction(function () use ($data, $providerMessageId): WhatsappMessage {
+            $wasCreated = false;
+
+            $message = DB::transaction(function () use ($data, $providerMessageId, &$wasCreated): WhatsappMessage {
                 $existing = WhatsappMessage::query()
                     ->where('whatsapp_message_id', $providerMessageId)
                     ->first();
@@ -77,12 +79,22 @@ class InboundMessageService
                     'media_rejected' => $data->mediaRejected,
                 ]);
 
-                DB::afterCommit(function () use ($message): void {
-                    $this->taskWorkflowNotificationService->notifyNewWhatsappMessageReceived($message);
-                });
+                $wasCreated = true;
 
                 return $message;
             });
+
+            if ($wasCreated) {
+                $notificationMessage = WhatsappMessage::query()
+                    ->with('contact')
+                    ->find($message->id);
+
+                if ($notificationMessage) {
+                    $this->taskWorkflowNotificationService->notifyNewWhatsappMessageReceived($notificationMessage);
+                }
+            }
+
+            return $message;
         } catch (QueryException $exception) {
             if ($this->isDuplicateWhatsappMessageIdException($exception)) {
                 $existing = WhatsappMessage::query()

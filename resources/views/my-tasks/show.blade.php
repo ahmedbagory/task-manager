@@ -9,6 +9,7 @@
             'accepted' => 'bg-cyan-100 text-cyan-800',
             'in_progress' => 'bg-indigo-100 text-indigo-800',
             'wait_response' => 'bg-orange-100 text-orange-800',
+            'awaiting_reporter_confirmation' => 'bg-violet-100 text-violet-800',
             'completed' => 'bg-emerald-100 text-emerald-800',
             'cancelled', 'rejected' => 'bg-rose-100 text-rose-700',
             default => 'bg-slate-100 text-slate-700',
@@ -16,7 +17,8 @@
 
         $currentStatus = $workflowStatus->value;
         $currentAssignmentStatus = $currentAssignment?->status->value;
-        $canAcceptAction = $currentAssignmentStatus === 'assigned' && $currentStatus === 'assigned';
+        $canAcceptAction = ($currentAssignmentStatus === 'assigned' && $currentStatus === 'assigned')
+            || ($currentAssignmentStatus === null && $currentStatus === 'assigned');
         $canStartAction = $currentAssignmentStatus === 'accepted' && $currentStatus === 'accepted';
         $canWaitResponseAction = $currentAssignmentStatus === 'accepted' && $currentStatus === 'in_progress';
         $canResumeAction = $currentAssignmentStatus === 'accepted' && $currentStatus === 'wait_response';
@@ -65,6 +67,14 @@
             <div>
                 <dt class="font-semibold text-slate-500">{{ __('Location') }}</dt>
                 <dd>{{ $task->location ?: '-' }}</dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-slate-500">{{ __('Reporter / Requester') }}</dt>
+                <dd>{{ trim(implode(' - ', array_filter([$reporter['name'] ?? null, $reporter['phone'] ?? null]))) ?: '-' }}</dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-slate-500">{{ __('Assigned Employees') }}</dt>
+                <dd>{{ $assignees->pluck('name')->implode('، ') ?: '-' }}</dd>
             </div>
         </dl>
 
@@ -119,7 +129,7 @@
                         <form method="POST" action="{{ route('my-tasks.complete', $task) }}">
                             @csrf
                             <button type="submit" class="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-500">
-                                {{ __('Mark Completed') }}
+                                {{ __('Submit For Confirmation') }}
                             </button>
                         </form>
                     @endif
@@ -147,6 +157,49 @@
                     <p class="mt-3 text-sm text-slate-500">{{ __('This task can no longer be rejected.') }}</p>
                 @endif
             </article>
+        </section>
+    @endif
+
+    @if ($canConfirmResolution || $canRejectResolution)
+        <section class="mt-5 grid gap-4 lg:grid-cols-2">
+            @if ($canConfirmResolution)
+                <article class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <h3 class="text-sm font-semibold uppercase tracking-[0.14em] text-slate-500">{{ __('Confirm Resolution') }}</h3>
+                    <form method="POST" action="{{ route('my-tasks.confirm-resolution', $task) }}" class="mt-3 space-y-2">
+                        @csrf
+                        <textarea
+                            name="comment"
+                            rows="3"
+                            maxlength="2000"
+                            class="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                            placeholder="{{ __('Optional confirmation comment...') }}"
+                        >{{ old('comment') }}</textarea>
+                        <button type="submit" class="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-500">
+                            {{ __('Yes, solved') }}
+                        </button>
+                    </form>
+                </article>
+            @endif
+
+            @if ($canRejectResolution)
+                <article class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <h3 class="text-sm font-semibold uppercase tracking-[0.14em] text-slate-500">{{ __('Reject Resolution') }}</h3>
+                    <form method="POST" action="{{ route('my-tasks.reject-resolution', $task) }}" class="mt-3 space-y-2">
+                        @csrf
+                        <textarea
+                            name="comment"
+                            rows="3"
+                            required
+                            maxlength="2000"
+                            class="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                            placeholder="{{ __('Explain why the issue is still not solved...') }}"
+                        >{{ old('comment') }}</textarea>
+                        <button type="submit" class="rounded-lg bg-rose-600 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-500">
+                            {{ __('No, not solved') }}
+                        </button>
+                    </form>
+                </article>
+            @endif
         </section>
     @endif
 

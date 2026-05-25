@@ -3,10 +3,9 @@
 namespace App\Policies;
 
 use App\Models\Task;
-use App\Models\TaskAssignmentTarget;
 use App\Models\User;
+use App\Services\Tasks\TaskAccessService;
 use App\Support\Rbac;
-use Illuminate\Database\Eloquent\Builder;
 
 class TaskPolicy
 {
@@ -17,7 +16,7 @@ class TaskPolicy
 
     public function view(User $user, Task $task): bool
     {
-        if (! $user->can('tasks.view')) {
+        if (! $user->can('tasks.view') && ! $this->taskAccessService()->isReporter($user, $task)) {
             return false;
         }
 
@@ -88,55 +87,40 @@ class TaskPolicy
 
     public function viewAssignedWorkspace(User $user, Task $task): bool
     {
+        if ($this->taskAccessService()->isReporter($user, $task)) {
+            return true;
+        }
+
         if (! $user->can('tasks.view')) {
             return false;
         }
 
-        return $task->assigned_to_user_id === $user->id
-            || $this->isTargetedUser($user, $task);
+        return $this->taskAccessService()->isParticipant($user, $task)
+            || $task->created_by === $user->id;
     }
 
     public function respondToAssignment(User $user, Task $task): bool
     {
-        return $this->viewAssignedWorkspace($user, $task);
+        return $user->can('tasks.view')
+            && $this->taskAccessService()->resolveCurrentUserRole($task, $user) === 'assignee';
     }
 
     public function addWorkspaceComment(User $user, Task $task): bool
     {
-        return $user->can('tasks.comment')
-            && $this->viewAssignedWorkspace($user, $task);
+        if ($this->taskAccessService()->isReporter($user, $task)) {
+            return true;
+        }
+
+        return $user->can('tasks.comment') && $this->viewAssignedWorkspace($user, $task);
     }
 
     public function uploadWorkspaceAttachment(User $user, Task $task): bool
     {
-        return $user->can('tasks.attachments.view')
-            && $this->viewAssignedWorkspace($user, $task);
-    }
-
-    private function isTargetedUser(User $user, Task $task): bool
-    {
-        if (! $task->assignmentTargets()->exists()) {
-            return false;
+        if ($this->taskAccessService()->isReporter($user, $task)) {
+            return true;
         }
 
-        return $task->assignmentTargets()
-            ->where(function (Builder $query) use ($user): void {
-                $query->where('target_type', TaskAssignmentTarget::LEGACY_ALL)
-                    ->orWhere(function (Builder $q) use ($user): void {
-                        $q->whereIn('target_type', TaskAssignmentTarget::userTargetTypes())
-                            ->where('target_id', $user->id);
-                    });
-
-                $departmentIds = array_filter([$user->department_id, $user->department?->parent_id]);
-
-                if ($departmentIds !== []) {
-                    $query->orWhere(function (Builder $q) use ($departmentIds): void {
-                        $q->whereIn('target_type', TaskAssignmentTarget::departmentTargetTypes())
-                            ->whereIn('target_id', $departmentIds);
-                    });
-                }
-            })
-            ->exists();
+        return $user->can('tasks.attachments.view') && $this->viewAssignedWorkspace($user, $task);
     }
 
     public function viewAssignments(User $user, Task $task): bool
@@ -146,7 +130,17 @@ class TaskPolicy
 
     public function viewAttachments(User $user, Task $task): bool
     {
-        return $user->can('tasks.attachments.view') && $this->view($user, $task);
+        return $this->uploadWorkspaceAttachment($user, $task);
+    }
+
+    public function confirmResolution(User $user, Task $task): bool
+    {
+        return $this->taskAccessService()->resolveAllowedActions($task, $user)['can_confirm_resolution'];
+    }
+
+    public function rejectResolution(User $user, Task $task): bool
+    {
+        return $this->taskAccessService()->resolveAllowedActions($task, $user)['can_reject_resolution'];
     }
 
     private function canManageAllTasks(User $user): bool
@@ -161,8 +155,14 @@ class TaskPolicy
 
     private function isOwnTask(User $user, Task $task): bool
     {
-        return $task->assigned_to_user_id === $user->id
+        return $this->taskAccessService()->isAssignee($user, $task)
+            || $this->taskAccessService()->isReporter($user, $task)
             || $task->reported_by_user_id === $user->id
             || $task->created_by === $user->id;
+    }
+
+    private function taskAccessService(): TaskAccessService
+    {
+        return app(TaskAccessService::class);
     }
 }

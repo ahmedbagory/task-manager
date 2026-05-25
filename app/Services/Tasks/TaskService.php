@@ -9,11 +9,14 @@ use App\Models\User;
 use App\Models\WhatsappMessage;
 use App\Services\Notifications\FcmNotificationService;
 use App\Services\Notifications\TaskWorkflowNotificationService;
+use App\Support\RunsAfterCommit;
 use App\Services\WhatsApp\TaskWhatsAppNotificationService;
 use Illuminate\Support\Facades\DB;
 
 class TaskService
 {
+    use RunsAfterCommit;
+
     public function __construct(
         private readonly TaskNumberGenerator $taskNumberGenerator,
         private readonly TaskWhatsAppNotificationService $taskWhatsAppNotificationService,
@@ -39,7 +42,7 @@ class TaskService
 
             $task = Task::query()->create($data);
 
-            $this->taskAssignmentTargetResolver->syncTargets($task, $targets, $actor);
+            $this->taskAssignmentTargetResolver->syncTargets($task, $targets, $actor, 'new_assignment');
 
             return $task;
         });
@@ -68,6 +71,7 @@ class TaskService
                 'department_id' => $data['department_id'] ?? null,
                 'category_id' => $data['category_id'] ?? null,
                 'reported_by_user_id' => $data['reported_by_user_id'] ?? null,
+                'whatsapp_contact_id' => $data['whatsapp_contact_id'] ?? $lockedMessage->contact_id,
                 'reported_by_phone' => $reporterPhone,
                 'priority' => $data['priority'] ?? 'medium',
                 'status' => $data['status'] ?? TaskStatus::PENDING_ASSIGNMENT->value,
@@ -80,8 +84,10 @@ class TaskService
 
             $lockedMessage->update(['task_id' => $task->id]);
 
-            DB::afterCommit(function () use ($task): void {
-                $freshTask = Task::query()->find($task->id);
+            $this->runAfterCommit(function () use ($task): void {
+                $freshTask = $this->shouldRunAfterCommitImmediately()
+                    ? $task
+                    : Task::query()->find($task->id);
 
                 if ($freshTask) {
                     $this->taskWhatsAppNotificationService->notifyTaskRegistered($freshTask);
@@ -111,7 +117,7 @@ class TaskService
             $lockedTask->updated_by = $actor->id;
             $lockedTask->save();
 
-            $this->taskAssignmentTargetResolver->syncTargets($lockedTask, $targets, $actor);
+            $this->taskAssignmentTargetResolver->syncTargets($lockedTask, $targets, $actor, 'added_assignee');
 
             return $lockedTask->refresh();
         });
@@ -143,8 +149,10 @@ class TaskService
             $lockedTask->save();
 
             if ($targetStatus === TaskStatus::COMPLETED && (! $wasCompleted)) {
-                DB::afterCommit(function () use ($lockedTask, $actor): void {
-                    $freshTask = Task::query()->find($lockedTask->id);
+                $this->runAfterCommit(function () use ($lockedTask, $actor): void {
+                    $freshTask = $this->shouldRunAfterCommitImmediately()
+                        ? $lockedTask
+                        : Task::query()->find($lockedTask->id);
 
                     if ($freshTask) {
                         $this->taskWhatsAppNotificationService->notifyTaskCompleted($freshTask);

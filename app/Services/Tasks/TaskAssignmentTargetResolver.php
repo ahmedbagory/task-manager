@@ -8,6 +8,8 @@ use App\Models\Task;
 use App\Models\TaskAssignmentTarget;
 use App\Models\User;
 use App\Services\Notifications\FcmNotificationService;
+use App\Services\Notifications\TaskWorkflowNotificationService;
+use App\Support\RunsAfterCommit;
 use App\Support\Rbac;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -15,8 +17,11 @@ use Illuminate\Support\Facades\DB;
 
 class TaskAssignmentTargetResolver
 {
+    use RunsAfterCommit;
+
     public function __construct(
         private readonly FcmNotificationService $fcmNotificationService,
+        private readonly TaskWorkflowNotificationService $taskWorkflowNotificationService,
     ) {}
 
     /**
@@ -46,8 +51,20 @@ class TaskAssignmentTargetResolver
      * @param  array{departments?: array<int, int>, units?: array<int, int>, users?: array<int, int>, all?: bool}  $targets
      * @return array{department_ids: array<int, int>, user_ids: array<int, int>, all: bool}
      */
-    public function syncTargets(Task $task, array $targets, ?User $actor = null): array
+    public function syncTargets(
+        Task $task,
+        array $targets,
+        ?User $actor = null,
+        string $notificationContext = 'new_assignment'
+    ): array
     {
+        $previousResolvedUserIds = $this->resolveUsersForTask($task)
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+
         $isAll = ! empty($targets['all']) || ! empty($targets['assign_to_all']);
 
         $task->assignmentTargets()->delete();
@@ -69,7 +86,12 @@ class TaskAssignmentTargetResolver
             }
 
             $this->syncTaskDispatchState($task, $actor);
-            $this->dispatchTargetNotifications($task, $allUserIds);
+            $this->dispatchTargetNotifications(
+                task: $task,
+                resolvedUserIds: array_values(array_diff($allUserIds, $previousResolvedUserIds)),
+                actor: $actor,
+                context: $notificationContext,
+            );
 
             return ['department_ids' => [], 'user_ids' => $allUserIds, 'all' => true];
         }
@@ -104,7 +126,12 @@ class TaskAssignmentTargetResolver
             ->unique()
             ->values()
             ->all();
-        $this->dispatchTargetNotifications($task, $resolvedUserIds);
+        $this->dispatchTargetNotifications(
+            task: $task,
+            resolvedUserIds: array_values(array_diff($resolvedUserIds, $previousResolvedUserIds)),
+            actor: $actor,
+            context: $notificationContext,
+        );
 
         return [
             'department_ids' => $departmentIds,
@@ -422,7 +449,12 @@ class TaskAssignmentTargetResolver
     /**
      * @param  array<int, int>  $resolvedUserIds
      */
-    private function dispatchTargetNotifications(Task $task, array $resolvedUserIds): void
+    private function dispatchTargetNotifications(
+        Task $task,
+        array $resolvedUserIds,
+        ?User $actor = null,
+        string $context = 'new_assignment'
+    ): void
     {
         if ($resolvedUserIds === []) {
             return;
@@ -430,11 +462,23 @@ class TaskAssignmentTargetResolver
 
         $taskId = $task->id;
 
-        DB::afterCommit(function () use ($taskId, $resolvedUserIds): void {
-            $freshTask = Task::query()->find($taskId);
+        $this->runAfterCommit(function () use ($task, $taskId, $resolvedUserIds, $actor, $context): void {
+            $freshTask = $this->shouldRunAfterCommitImmediately()
+                ? $task
+                : Task::query()->find($taskId);
 
             if ($freshTask) {
-                $this->fcmNotificationService->notifyTaskTargetsAssigned($freshTask, $resolvedUserIds);
+                $recipients = User::query()
+                    ->whereIn('id', $resolvedUserIds)
+                    ->get();
+
+                $this->taskWorkflowNotificationService->notifyTaskAssignedToUsers(
+                    task: $freshTask,
+                    recipients: $recipients,
+                    actor: $actor,
+                    context: $context,
+                );
+                $this->fcmNotificationService->notifyTaskTargetsAssigned($freshTask, $resolvedUserIds, $actor, $context);
             }
         });
     }
