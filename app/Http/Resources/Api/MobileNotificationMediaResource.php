@@ -2,22 +2,22 @@
 
 namespace App\Http\Resources\Api;
 
-use App\Models\TaskAttachment;
+use App\Models\MobileNotificationAttachment;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/** @mixin TaskAttachment */
-class TaskAttachmentResource extends JsonResource
+/** @mixin MobileNotificationAttachment */
+class MobileNotificationMediaResource extends JsonResource
 {
     /**
      * @return array<string, mixed>
      */
     public function toArray(Request $request): array
     {
-        $name = $this->original_name ?: basename((string) $this->path);
-        $url = $this->task_id
-            ? route('api.mobile.my-tasks.attachments.download', [
-                'task' => $this->task_id,
+        $filename = $this->original_name ?: basename((string) $this->path);
+        $url = $this->mobile_notification_id
+            ? route('api.mobile.notifications.attachments.download', [
+                'notification' => $this->mobile_notification_id,
                 'attachment' => $this->id,
             ])
             : null;
@@ -27,19 +27,16 @@ class TaskAttachmentResource extends JsonResource
 
         return [
             'id' => $this->id,
-            'name' => $name,
-            'filename' => basename((string) $this->path),
-            'original_name' => $this->original_name,
-            'mime_type' => $this->mime_type,
-            'size' => $this->size,
             'type' => $type,
+            'mime_type' => $this->mime_type,
+            'filename' => $filename,
+            'name' => $filename,
+            'original_name' => $this->original_name,
+            'size' => $this->size,
             'url' => $url,
             'thumbnail_url' => $this->isImage() ? $url : null,
-            'source' => 'task_attachment',
+            'source' => 'notification_media',
             'created_at' => $this->created_at?->toIso8601String(),
-            'uploaded_by' => $this->user
-                ? (new UserResource($this->user))->resolve()
-                : null,
         ];
     }
 }

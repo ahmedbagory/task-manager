@@ -83,4 +83,19 @@ class TaskAttachment extends Model
 
         return number_format($this->size / 1048576, 1) . ' MB';
     }
+
+    public static function resolveType(?string $mimeType): string
+    {
+        $mimeType = trim((string) $mimeType);
+
+        if (in_array($mimeType, self::IMAGE_MIMES, true)) {
+            return 'image';
+        }
+
+        if (in_array($mimeType, self::VIDEO_MIMES, true)) {
+            return 'video';
+        }
+
+        return 'file';
+    }
 }

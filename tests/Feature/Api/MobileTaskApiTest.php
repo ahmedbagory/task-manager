@@ -445,6 +445,11 @@ class MobileTaskApiTest extends TestCase
             ->assertJsonPath('data.task.attachments.0.name', 'evidence.jpg')
             ->assertJsonPath('data.task.attachments.0.filename', 'evidence.jpg')
             ->assertJsonPath('data.task.attachments.0.mime_type', 'image/jpeg')
-            ->assertJsonPath('data.task.attachments.0.size', 11);
+            ->assertJsonPath('data.task.attachments.0.size', 11)
+            ->assertJsonPath('data.task.attachments.0.type', 'image')
+            ->assertJsonPath('data.task.attachments.0.thumbnail_url', route('api.mobile.my-tasks.attachments.download', [
+                'task' => $task->id,
+                'attachment' => $attachment->id,
+            ]));
     }
 }

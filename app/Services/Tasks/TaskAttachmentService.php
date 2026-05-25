@@ -42,7 +42,7 @@ class TaskAttachmentService
             'original_name' => $file->getClientOriginalName(),
             'mime_type' => $file->getMimeType(),
             'size' => $file->getSize(),
-            'type' => $this->attachmentType((string) $file->getMimeType()),
+            'type' => TaskAttachment::resolveType($file->getMimeType()),
         ]);
     }
 
@@ -132,13 +132,8 @@ class TaskAttachmentService
             'original_name' => $originalName,
             'mime_type' => $message->media_mime,
             'size' => $message->media_size,
-            'type' => $this->attachmentType((string) $message->media_mime),
+            'type' => TaskAttachment::resolveType($message->media_mime),
         ]);
-    }
-
-    private function attachmentType(string $mimeType): string
-    {
-        return str_starts_with($mimeType, 'image/') ? 'image' : 'file';
     }
 
     private function resolveOriginalName(WhatsappMessage $message): string

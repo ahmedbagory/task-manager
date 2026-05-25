@@ -410,7 +410,7 @@ class ViewTask extends ViewRecord
                     'original_name' => $file->getClientOriginalName(),
                     'mime_type' => $file->getMimeType(),
                     'size' => $file->getSize(),
-                    'type' => str_starts_with((string) $file->getMimeType(), 'image/') ? 'image' : 'file',
+                    'type' => \App\Models\TaskAttachment::resolveType($file->getMimeType()),
                 ]);
 
                 $this->refreshTaskRecord();

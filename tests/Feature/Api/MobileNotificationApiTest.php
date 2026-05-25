@@ -105,12 +105,15 @@ class MobileNotificationApiTest extends TestCase
             ->assertJsonPath('success', true)
             ->assertJsonPath('data.notification.id', $notification->id)
             ->assertJsonPath('data.notification.title', 'Test notification')
+            ->assertJsonCount(2, 'data.notification.media')
             ->assertJsonCount(2, 'data.notification.attachments');
 
-        $attachment = $response->json('data.notification.attachments.0');
+        $attachment = $response->json('data.notification.media.0');
         $this->assertSame('image', $attachment['type']);
-        $this->assertSame('photo0.jpg', $attachment['original_name']);
+        $this->assertSame('photo0.jpg', $attachment['filename']);
         $this->assertArrayHasKey('url', $attachment);
+        $this->assertArrayHasKey('thumbnail_url', $attachment);
+        $this->assertSame('notification_media', $attachment['source']);
     }
 
     public function test_notification_details_marks_as_read(): void

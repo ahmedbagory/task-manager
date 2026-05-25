@@ -44,15 +44,11 @@ class FcmNotificationService
 
         [$title, $body] = $this->assignmentCopy($task, $actor?->name ?? 'النظام', $context);
 
-        $deliveredCount = $this->sendTokens($tokens, $title, $body, [
+        $deliveredCount = $this->sendTokens($tokens, $title, $body, $this->taskNotificationData($task, [
             'type' => 'new_task',
-            'task_id' => (string) $task->id,
             'task_title' => $task->title,
-            'task_number' => $task->task_number ?? '',
-            'display_number' => $task->displayNumber(),
             'assignment_context' => $context,
-            'route' => '/tasks/' . $task->id,
-        ]);
+        ]));
 
         Log::info('[FCM] Task assignment notification processed.', [
             'task_id' => $task->id,
@@ -93,13 +89,10 @@ class FcmNotificationService
         $title = 'Task '.ucfirst($label);
         $body = "Task \"{$task->title}\" has been {$label}.";
 
-        $deliveredCount = $this->sendTokens($tokens, $title, $body, [
+        $deliveredCount = $this->sendTokens($tokens, $title, $body, $this->taskNotificationData($task, [
             'type' => 'task_update',
-            'task_id' => (string) $task->id,
-            'task_number' => $task->task_number ?? '',
             'action' => $action,
-            'route' => '/tasks/' . $task->id,
-        ]);
+        ]));
 
         Log::info('[FCM] Task status notification processed.', [
             'task_id' => $task->id,
@@ -133,13 +126,10 @@ class FcmNotificationService
         $title = __('Task')." {$task->displayNumber()} {$label}";
         $body = "{$actorName} {$label} \"{$task->title}\"";
 
-        $data = [
+        $data = $this->taskNotificationData($task, [
             'type' => 'task_dispatcher_update',
-            'task_id' => (string) $task->id,
-            'task_number' => $task->task_number ?? '',
-            'display_number' => $task->displayNumber(),
             'action' => $action,
-        ];
+        ]);
 
         $dispatchers = User::query()
             ->whereHas('roles', fn ($q) => $q->whereIn('name', [Rbac::SUPER_ADMIN, Rbac::ADMIN, Rbac::DISPATCHER]))
@@ -197,14 +187,11 @@ class FcmNotificationService
         $users = User::query()->whereIn('id', $uniqueUserIds)->get();
 
         [$title, $body] = $this->assignmentCopy($task, $actor?->name ?? 'النظام', $context);
-        $data = [
+        $data = $this->taskNotificationData($task, [
             'type' => 'new_task',
-            'task_id' => (string) $task->id,
             'task_title' => $task->title,
-            'task_number' => $task->task_number ?? '',
-            'display_number' => $task->displayNumber(),
             'assignment_context' => $context,
-        ];
+        ]);
 
         $totalTokens = 0;
         $successCount = 0;
@@ -236,13 +223,9 @@ class FcmNotificationService
             recipient: $recipient,
             title: 'بانتظار تأكيد حل المشكلة',
             body: 'تم إرسال المهمة '.$task->displayNumber().': '.$task->title.' للتأكيد. هل تم حل المشكلة؟',
-            data: [
+            data: $this->taskNotificationData($task, [
                 'type' => 'reporter_confirmation_request',
-                'task_id' => (string) $task->id,
-                'task_number' => $task->task_number ?? '',
-                'display_number' => $task->displayNumber(),
-                'route' => '/tasks/' . $task->id,
-            ],
+            ]),
         );
     }
 
@@ -616,14 +599,31 @@ class FcmNotificationService
                 recipient: $user,
                 title: $title,
                 body: $body,
-                data: [
+                data: $this->taskNotificationData($task, [
                     'type' => $type,
-                    'task_id' => (string) $task->id,
-                    'task_number' => $task->task_number ?? '',
-                    'display_number' => $task->displayNumber(),
-                    'route' => '/tasks/' . $task->id,
-                ],
+                ]),
             );
         }
+    }
+
+    /**
+     * @param  array<string, string>  $extra
+     * @return array<string, string>
+     */
+    private function taskNotificationData(Task $task, array $extra = []): array
+    {
+        $attachmentsCount = $task->relationLoaded('attachments')
+            ? $task->attachments->count()
+            : $task->attachments()->count();
+
+        return [
+            'task_id' => (string) $task->id,
+            'task_number' => $task->task_number ?? '',
+            'display_number' => $task->displayNumber(),
+            'route' => '/tasks/' . $task->id,
+            'attachment_count' => (string) $attachmentsCount,
+            'has_attachments' => $attachmentsCount > 0 ? '1' : '0',
+            ...$extra,
+        ];
     }
 }

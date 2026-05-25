@@ -4,8 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Api\Concerns\RespondsWithJson;
 use App\Http\Controllers\Controller;
+use App\Http\Resources\Api\MobileNotificationMediaResource;
 use App\Models\MobileNotification;
-use App\Models\MobileNotificationAttachment;
 use App\Models\MobileNotificationRecipient;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
@@ -24,7 +24,7 @@ class MobileNotificationController extends Controller
 
         $recipients = MobileNotificationRecipient::query()
             ->where('user_id', $user->id)
-            ->with(['mobileNotification' => fn ($q) => $q->withCount('attachments')])
+            ->with(['mobileNotification' => fn ($q) => $q->with(['attachments'])->withCount('attachments')])
             ->orderByDesc('created_at')
             ->paginate((int) ($request->query('per_page', 20)));
 
@@ -32,9 +32,8 @@ class MobileNotificationController extends Controller
             ->filter(fn (MobileNotificationRecipient $r) => $r->mobileNotification !== null)
             ->map(function (MobileNotificationRecipient $recipient): array {
                 $notification = $recipient->mobileNotification;
-                $firstImage = $notification->attachments()
-                    ->where('type', 'image')
-                    ->first();
+                $firstImage = $notification->attachments
+                    ->first(fn ($attachment): bool => $attachment->isImage());
 
                 return [
                     'id' => $notification->id,
@@ -43,7 +42,13 @@ class MobileNotificationController extends Controller
                     'created_at' => $notification->created_at?->toIso8601String(),
                     'read_at' => $recipient->read_at?->toIso8601String(),
                     'attachment_count' => $notification->attachments_count ?? 0,
-                    'first_image_url' => $firstImage?->url(),
+                    'media_count' => $notification->attachments_count ?? 0,
+                    'first_image_url' => $firstImage
+                        ? route('api.mobile.notifications.attachments.download', [
+                            'notification' => $notification->id,
+                            'attachment' => $firstImage->id,
+                        ])
+                        : null,
                 ];
             })
             ->values()
@@ -89,14 +94,7 @@ class MobileNotificationController extends Controller
             $recipient->update(['read_at' => now()]);
         }
 
-        $attachments = $notificationModel->attachments->map(fn (MobileNotificationAttachment $a): array => [
-            'id' => $a->id,
-            'type' => $a->type,
-            'original_name' => $a->original_name,
-            'mime_type' => $a->mime_type,
-            'size' => $a->size,
-            'url' => $a->url(),
-        ])->all();
+        $media = MobileNotificationMediaResource::collection($notificationModel->attachments)->resolve();
 
         return $this->successResponse(
             data: [
@@ -106,7 +104,8 @@ class MobileNotificationController extends Controller
                     'body' => $notificationModel->body,
                     'created_at' => $notificationModel->created_at?->toIso8601String(),
                     'read_at' => $recipient->read_at?->toIso8601String(),
-                    'attachments' => $attachments,
+                    'media' => $media,
+                    'attachments' => $media,
                 ],
             ],
             message: 'Notification fetched successfully.',
