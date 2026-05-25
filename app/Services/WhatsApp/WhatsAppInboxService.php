@@ -73,20 +73,12 @@ class WhatsAppInboxService
         [$routingContact, $resolvedReporterPhone] = $this->resolveRoutingContext($message);
 
         $messageBody = trim((string) ($message->body ?? ''));
-        $additionalDescription = trim((string) Arr::get($data, 'description', ''));
-
-        $description = $messageBody;
-
-        if (($additionalDescription !== '') && ($additionalDescription !== $messageBody)) {
-            $description = trim($messageBody === ''
-                ? $additionalDescription
-                : ($messageBody.PHP_EOL.PHP_EOL.$additionalDescription));
-        }
+        $description = $this->messageDescription($message);
 
         $title = trim((string) Arr::get($data, 'title', ''));
 
         if ($title === '') {
-            $title = str($messageBody !== '' ? $messageBody : 'WhatsApp issue report')
+            $title = str($messageBody !== '' ? $messageBody : 'مرفق من واتساب')
                 ->limit(100)
                 ->toString();
         }
@@ -113,6 +105,17 @@ class WhatsAppInboxService
             'assignee_ids' => array_map('intval', (array) Arr::get($data, 'assignee_ids', [])),
             'reported_by_phone' => $resolvedReporterPhone,
         ];
+    }
+
+    private function messageDescription(WhatsappMessage $message): ?string
+    {
+        $body = trim((string) ($message->body ?? ''));
+
+        if ($body !== '') {
+            return $body;
+        }
+
+        return $message->hasMedia() ? 'مرفق من واتساب' : null;
     }
 
     /**

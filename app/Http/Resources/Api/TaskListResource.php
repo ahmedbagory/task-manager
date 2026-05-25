@@ -3,6 +3,7 @@
 namespace App\Http\Resources\Api;
 
 use App\Enums\TaskPriority;
+use App\Enums\TaskSource;
 use App\Models\Task;
 use App\Services\Tasks\TaskAccessService;
 use Illuminate\Http\Request;
@@ -19,6 +20,9 @@ class TaskListResource extends JsonResource
         $priority = $this->priority instanceof TaskPriority
             ? $this->priority
             : TaskPriority::tryFrom((string) $this->priority);
+        $source = $this->source instanceof TaskSource
+            ? $this->source
+            : TaskSource::tryFrom((string) $this->source);
 
         $status = $this->workflowStatus();
 
@@ -47,7 +51,8 @@ class TaskListResource extends JsonResource
             'description' => $this->description,
             'reported_by_phone' => $this->reported_by_phone,
             'location' => $this->location,
-            'source' => is_string($this->source) ? $this->source : $this->source?->value,
+            'source' => $source?->value ?? (is_string($this->source) ? $this->source : null),
+            'source_label' => $source?->label(),
             'status' => $status->value,
             'status_label' => $this->workflowStatusLabel(),
             'priority' => $priority?->value ?? (string) $this->priority,

@@ -13,6 +13,7 @@ use App\Support\Rbac;
 use Filament\Forms\Components\CheckboxList;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\FileUpload;
+use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -30,6 +31,8 @@ class TaskForm
                 Section::make('إنشاء مهمة')
                     ->description('أدخل بيانات المهمة، ثم حدّد صاحب الطلب والمكلفين بشكل منفصل.')
                     ->components([
+                        Hidden::make('whatsapp_message_id')
+                            ->dehydrated(),
                         TextInput::make('title')
                             ->label('عنوان المهمة')
                             ->required()
@@ -38,6 +41,10 @@ class TaskForm
                         Textarea::make('description')
                             ->label('الوصف')
                             ->rows(5)
+                            ->readOnly(fn (Get $get): bool => filled($get('whatsapp_message_id')))
+                            ->helperText(fn (Get $get): ?string => filled($get('whatsapp_message_id'))
+                                ? 'يؤخذ الوصف تلقائيًا من نص رسالة واتساب أو الكابشن فقط.'
+                                : null)
                             ->columnSpanFull(),
                         Select::make('reported_by_user_id')
                             ->label('صاحب الطلب')

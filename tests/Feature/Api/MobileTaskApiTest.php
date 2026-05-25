@@ -408,4 +408,43 @@ class MobileTaskApiTest extends TestCase
             ->assertJsonPath('data.tasks.0.my_assignment.status', TaskStatus::ASSIGNED->value)
             ->assertJsonPath('data.tasks.0.my_assignment.can_accept', true);
     }
+
+    public function test_task_detail_returns_source_label_and_attachment_payload(): void
+    {
+        app(RbacInitializationService::class)->seed();
+        Storage::fake('local');
+
+        $employee = User::factory()->create();
+        $employee->assignRole(Rbac::EMPLOYEE);
+
+        $task = Task::factory()->create([
+            'reported_by_user_id' => $employee->id,
+            'status' => TaskStatus::NEW->value,
+            'source' => TaskSource::WHATSAPP->value,
+        ]);
+
+        $storedPath = 'task-attachments/'.$task->id.'/evidence.jpg';
+        Storage::disk('local')->put($storedPath, 'image-bytes');
+        $attachment = $task->attachments()->create([
+            'user_id' => $employee->id,
+            'disk' => 'local',
+            'path' => $storedPath,
+            'original_name' => 'evidence.jpg',
+            'mime_type' => 'image/jpeg',
+            'size' => 11,
+            'type' => 'image',
+        ]);
+
+        Sanctum::actingAs($employee);
+
+        $this->getJson("/api/mobile/my-tasks/{$task->id}")
+            ->assertOk()
+            ->assertJsonPath('data.task.source', TaskSource::WHATSAPP->value)
+            ->assertJsonPath('data.task.source_label', 'واتساب')
+            ->assertJsonPath('data.task.attachments.0.id', $attachment->id)
+            ->assertJsonPath('data.task.attachments.0.name', 'evidence.jpg')
+            ->assertJsonPath('data.task.attachments.0.filename', 'evidence.jpg')
+            ->assertJsonPath('data.task.attachments.0.mime_type', 'image/jpeg')
+            ->assertJsonPath('data.task.attachments.0.size', 11);
+    }
 }

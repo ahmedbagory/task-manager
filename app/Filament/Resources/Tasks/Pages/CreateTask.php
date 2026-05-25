@@ -5,7 +5,6 @@ namespace App\Filament\Resources\Tasks\Pages;
 use App\Enums\TaskPriority;
 use App\Enums\TaskSource;
 use App\Filament\Resources\Tasks\TaskResource;
-use App\Filament\Resources\WhatsappMessages\WhatsappMessageResource;
 use App\Models\TaskCategory;
 use App\Models\User;
 use App\Models\WhatsappMessage;
@@ -22,8 +21,6 @@ use Illuminate\Support\Str;
 class CreateTask extends CreateRecord
 {
     protected static string $resource = TaskResource::class;
-
-    private ?WhatsappMessage $sourceWhatsappMessage = null;
 
     public function mount(): void
     {
@@ -52,7 +49,6 @@ class CreateTask extends CreateRecord
             return;
         }
 
-        $this->sourceWhatsappMessage = $message;
         $this->form->fill($this->buildPrefillData($message));
     }
 
@@ -63,11 +59,16 @@ class CreateTask extends CreateRecord
         $attachments = collect((array) ($data['attachment_uploads'] ?? []))
             ->filter(fn ($file): bool => $file instanceof UploadedFile)
             ->values();
+        $whatsappMessageId = (int) ($data['whatsapp_message_id'] ?? 0);
 
-        unset($data['attachment_uploads'], $data['remove_attachment_ids']);
+        unset($data['attachment_uploads'], $data['remove_attachment_ids'], $data['whatsapp_message_id']);
 
-        if ($this->sourceWhatsappMessage) {
-            $task = app(WhatsAppInboxService::class)->convertMessageToTask($this->sourceWhatsappMessage, $data, $user);
+        if ($whatsappMessageId > 0) {
+            $message = WhatsappMessage::query()
+                ->with(['contact', 'task'])
+                ->findOrFail($whatsappMessageId);
+
+            $task = app(WhatsAppInboxService::class)->convertMessageToTask($message, $data, $user);
         } else {
             $task = app(TaskService::class)->createManualTask($data, $user);
         }
@@ -103,26 +104,16 @@ class CreateTask extends CreateRecord
     {
         $body = trim((string) ($message->body ?? ''));
         $phone = $message->from_phone ?: $message->contact?->phone ?: $message->to_phone;
-        $conversationUrl = WhatsappMessageResource::getUrl('index', ['contact' => $message->contact_id]);
-
-        $descriptionLines = array_filter([
-            $body !== '' ? $body : __('No text body was included with this WhatsApp message.'),
-            '',
-            __('WhatsApp sender: :value', ['value' => $message->contact?->name ?: ($phone ?: '-')]),
-            __('Sender phone: :value', ['value' => $phone ?: '-']),
-            __('Message date: :value', ['value' => $message->received_at?->format('Y-m-d H:i') ?: '-']),
-            __('Message ID: :value', ['value' => $message->whatsapp_message_id ?: '-']),
-            $message->media_url ? __('Media URL: :value', ['value' => $message->media_url]) : null,
-            $message->media_type ? __('Media type: :value', ['value' => $message->media_type]) : null,
-            $message->group_name ? __('Group: :value', ['value' => $message->group_name]) : null,
-            __('Conversation link: :value', ['value' => $conversationUrl]),
-        ]);
+        $description = $body !== ''
+            ? $body
+            : ($message->hasMedia() ? 'مرفق من واتساب' : null);
 
         return [
+            'whatsapp_message_id' => $message->id,
             'title' => $body !== ''
                 ? __('متابعة واتساب: :text', ['text' => Str::limit($body, 60)])
-                : __('متابعة ملف واتساب من رقم :phone', ['phone' => $phone ?: __('غير معروف')]),
-            'description' => implode(PHP_EOL, $descriptionLines),
+                : __('مرفق من واتساب'),
+            'description' => $description,
             'priority' => TaskPriority::MEDIUM->value,
             'source' => TaskSource::WHATSAPP->value,
             'department_id' => $message->contact?->department_id,

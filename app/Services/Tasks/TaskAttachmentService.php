@@ -178,6 +178,27 @@ class TaskAttachmentService
             return $relativePath;
         }
 
+        $mediaPath = str_replace('\\', '/', trim((string) $message->media_path));
+
+        if ($mediaPath !== '') {
+            $candidates = [
+                ltrim(Str::after($mediaPath, 'storage/app/public/'), '/'),
+                ltrim(Str::after($mediaPath, 'public/storage/'), '/'),
+                ltrim(Str::after($mediaPath, 'storage/'), '/'),
+                ltrim(Str::after($mediaPath, 'public/'), '/'),
+            ];
+
+            foreach ($candidates as $candidate) {
+                if ($candidate === '') {
+                    continue;
+                }
+
+                if (Storage::disk('public')->exists($candidate)) {
+                    return $candidate;
+                }
+            }
+        }
+
         $mediaUrl = trim((string) $message->media_url);
 
         if ($mediaUrl === '') {
@@ -190,6 +211,10 @@ class TaskAttachmentService
             return null;
         }
 
-        return ltrim(Str::after($path, '/storage/'), '/');
+        $relativePath = ltrim(Str::after($path, '/storage/'), '/');
+
+        return Storage::disk('public')->exists($relativePath)
+            ? $relativePath
+            : null;
     }
 }

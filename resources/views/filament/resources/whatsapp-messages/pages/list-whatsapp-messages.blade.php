@@ -393,7 +393,7 @@
                                                         href="{{ $this->taskUrlForMessage($message) }}"
                                                         class="inline-flex items-center rounded-full bg-success-100 px-2 py-0.5 text-[10px] font-medium text-success-700 dark:bg-success-500/15 dark:text-success-200"
                                                     >
-                                                        {{ 'فتح المهمة '.$message->task->displayNumber() }}
+                                                        {{ 'المهمة '.$message->task->displayNumber() }}
                                                     </a>
                                                 @else
                                                     <a

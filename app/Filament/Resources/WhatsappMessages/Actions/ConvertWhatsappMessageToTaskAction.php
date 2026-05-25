@@ -21,7 +21,7 @@ class ConvertWhatsappMessageToTaskAction
     public static function make(): Action
     {
         return Action::make('convertToTask')
-            ->label(__('Convert to Task'))
+            ->label('تحويل لمهمة')
             ->icon('heroicon-o-clipboard-document-list')
             ->color('success')
             ->visible(fn (WhatsappMessage $record): bool => blank($record->task_id))
@@ -52,17 +52,19 @@ class ConvertWhatsappMessageToTaskAction
                     }
                 }
 
+                $messageBody = trim((string) ($record->body ?? ''));
+
                 return [
-                    'title' => str((string) ($record->body ?: __('WhatsApp issue report')))->limit(100)->toString(),
-                    'description' => $record->body,
+                    'title' => str($messageBody !== '' ? $messageBody : 'مرفق من واتساب')->limit(100)->toString(),
+                    'description' => $messageBody !== '' ? $messageBody : ($record->hasMedia() ? 'مرفق من واتساب' : null),
                     'priority' => 'medium',
                     'reported_by_user_id' => $routingContact?->user_id,
                     'department_id' => $routingContact?->department_id,
                     'location' => $routingContact?->default_location,
                 ];
             })
-            ->modalHeading(__('Convert WhatsApp Message to Task'))
-            ->modalSubmitActionLabel(__('Create Task'))
+            ->modalHeading('تحويل رسالة واتساب إلى مهمة')
+            ->modalSubmitActionLabel('إنشاء المهمة')
             ->modalWidth('3xl')
             ->action(function (array $data, WhatsappMessage $record, WhatsAppInboxService $inboxService, Component $livewire): void {
                 /** @var User $actor */
@@ -107,7 +109,7 @@ class ConvertWhatsappMessageToTaskAction
     public static function makeViewLinkedTask(): Action
     {
         return Action::make('viewLinkedTask')
-            ->label(__('View Linked Task'))
+            ->label('فتح المهمة')
             ->icon('heroicon-o-link')
             ->color('gray')
             ->visible(fn (WhatsappMessage $record): bool => filled($record->task_id))

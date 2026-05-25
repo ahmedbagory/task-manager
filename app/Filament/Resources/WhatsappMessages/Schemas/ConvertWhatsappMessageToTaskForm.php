@@ -36,7 +36,8 @@ class ConvertWhatsappMessageToTaskForm
                         ->rows(4)
                         ->maxLength(5000)
                         ->columnSpanFull()
-                        ->helperText('سيتم الاحتفاظ بنص رسالة واتساب الأصلية داخل وصف المهمة.'),
+                        ->readOnly()
+                        ->helperText('يؤخذ الوصف تلقائيًا من نص رسالة واتساب أو الكابشن فقط.'),
                     Select::make('reported_by_user_id')
                         ->label('صاحب الطلب')
                         ->options(fn (): array => self::internalUserOptions())

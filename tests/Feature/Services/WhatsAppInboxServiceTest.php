@@ -66,8 +66,7 @@ class WhatsAppInboxServiceTest extends TestCase
         $this->assertSame(TaskStatus::NEW, $task->status);
         $this->assertSame('+201000000001', $task->reported_by_phone);
         $this->assertSame($task->id, $message->fresh()->task_id);
-        $this->assertStringContainsString('Water leakage in storage room.', (string) $task->description);
-        $this->assertStringContainsString('Reporter says leakage is increasing.', (string) $task->description);
+        $this->assertSame('Water leakage in storage room.', $task->description);
     }
 
     public function test_convert_message_to_task_assigns_employee_when_selected(): void
@@ -140,10 +139,47 @@ class WhatsAppInboxServiceTest extends TestCase
         $attachment = $task->fresh()->attachments()->first();
 
         $this->assertNotNull($attachment);
+        $this->assertSame('Attached photo of the damaged AC.', $task->fresh()->description);
         $this->assertSame('damaged-ac.jpg', $attachment->original_name);
         $this->assertSame('image/jpeg', $attachment->mime_type);
         $this->assertSame(11, $attachment->size);
         Storage::disk('local')->assertExists($attachment->path);
+    }
+
+    public function test_convert_message_to_task_uses_clean_placeholder_when_media_has_no_caption(): void
+    {
+        app(RbacInitializationService::class)->seed();
+        Storage::fake('public');
+        Storage::fake('local');
+
+        $dispatcher = User::factory()->create();
+        $dispatcher->assignRole(Rbac::DISPATCHER);
+
+        Storage::disk('public')->put('whatsapp-media/documents/report.pdf', 'pdf-bytes');
+
+        $message = WhatsappMessage::factory()->create([
+            'task_id' => null,
+            'direction' => 'inbound',
+            'from_phone' => '+201000000111',
+            'body' => null,
+            'media_type' => 'document',
+            'media_mime' => 'application/pdf',
+            'media_name' => 'report.pdf',
+            'media_size' => 9,
+            'media_path' => 'storage/app/public/whatsapp-media/documents/report.pdf',
+        ]);
+
+        $task = app(WhatsAppInboxService::class)->convertMessageToTask($message, [
+            'title' => 'مرفق من واتساب',
+            'priority' => 'medium',
+        ], $dispatcher);
+
+        $attachment = $task->fresh()->attachments()->first();
+
+        $this->assertNotNull($attachment);
+        $this->assertSame('مرفق من واتساب', $task->fresh()->description);
+        $this->assertStringNotContainsString('storage/app/public', (string) $task->fresh()->description);
+        $this->assertStringNotContainsString('Message ID', (string) $task->fresh()->description);
     }
 
     public function test_convert_message_to_task_prevents_duplicate_conversion(): void

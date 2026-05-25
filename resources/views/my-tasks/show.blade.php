@@ -619,7 +619,7 @@
             @endif
 
             @if ($task->attachments->isEmpty())
-                <p class="mt-4 text-sm text-slate-500">{{ __('No attachments uploaded.') }}</p>
+                <p class="mt-4 text-sm text-slate-500">{{ 'لا توجد مرفقات' }}</p>
             @endif
         </article>
     </section>

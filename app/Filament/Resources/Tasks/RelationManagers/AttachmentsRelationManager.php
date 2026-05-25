@@ -108,7 +108,7 @@ class AttachmentsRelationManager extends RelationManager
             ])
             ->headerActions([])
             ->bulkActions([])
-            ->emptyStateHeading(__('No attachments uploaded.'))
+            ->emptyStateHeading('لا توجد مرفقات')
             ->emptyStateIcon('heroicon-o-paper-clip');
     }
 }
