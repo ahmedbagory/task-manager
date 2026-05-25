@@ -3,3 +3,65 @@
 @source '../../../../app/Filament/**/*';
 @source '../../../../resources/views/filament/**/*';
 @source '../../../../resources/views/vendor/filament-panels/**/*';
+
+/* ─── Notification Panel: scrollbar + overflow fixes only ─── */
+
+/* Hide the ugly vertical scrollbar on the slide-over panel */
+.fi-no-database .fi-modal-window {
+    scrollbar-width: none !important;
+}
+
+.fi-no-database .fi-modal-window::-webkit-scrollbar {
+    display: none !important;
+}
+
+/* Kill horizontal overflow at the panel level */
+.fi-no-database .fi-modal-window {
+    overflow-x: hidden !important;
+}
+
+/* Prevent notification text from causing horizontal scroll */
+.fi-no-database .fi-no-notification-title,
+.fi-no-database .fi-no-notification-body {
+    word-break: break-word;
+    overflow-wrap: anywhere;
+}
+
+.fi-no-database .fi-no-notification-body p {
+    unicode-bidi: plaintext;
+}
+
+/* Notification icon: rounded bg */
+.fi-no-database .fi-no-notification-icon {
+    flex-shrink: 0;
+    width: 2rem;
+    height: 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.625rem;
+    background-color: oklch(0.967 0.001 286.375);
+}
+
+.dark .fi-no-database .fi-no-notification-icon {
+    background-color: oklch(0.274 0.006 286.033 / 0.4);
+}
+
+.fi-no-database .fi-no-notification-icon svg {
+    width: 1rem;
+    height: 1rem;
+}
+
+.fi-no-database .fi-no-notification-icon.fi-color {
+    background-color: color-mix(in oklab, white 85%, var(--color-400));
+}
+
+.dark .fi-no-database .fi-no-notification-icon.fi-color {
+    background-color: color-mix(in oklab, oklch(0.141 0.005 285.823) 75%, var(--color-400));
+}
+
+/* Unread left-bar */
+.fi-no-database .fi-no-notification-unread-ctn::before {
+    width: 3px !important;
+    border-radius: 0 3px 3px 0 !important;
+}

@@ -29,6 +29,12 @@ class WhatsappConversationController extends Controller
                 ->title(__('WhatsApp message sent.'))
                 ->success()
                 ->send();
+        } elseif ($result->status === 'queued_bridge') {
+            Notification::make()
+                ->title(__('WhatsApp message queued.'))
+                ->body(__('The message will be delivered when the bridge is available.'))
+                ->warning()
+                ->send();
         } else {
             Notification::make()
                 ->title(__('Unable to send the WhatsApp message.'))
@@ -52,6 +58,12 @@ class WhatsappConversationController extends Controller
             Notification::make()
                 ->title(__('WhatsApp message sent.'))
                 ->success()
+                ->send();
+        } elseif ($result->status === 'queued_bridge') {
+            Notification::make()
+                ->title(__('WhatsApp message queued for retry.'))
+                ->body(__('The message will be delivered when the bridge is available.'))
+                ->warning()
                 ->send();
         } else {
             Notification::make()

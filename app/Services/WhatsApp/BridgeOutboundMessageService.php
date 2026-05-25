@@ -64,12 +64,27 @@ class BridgeOutboundMessageService
             'attachment' => $message->hasMedia() ? array_filter([
                 'type' => $message->media_type,
                 'mime_type' => $message->media_mime,
-                'path' => $message->media_path,
+                'path' => $this->ensureStoragePrefix($message->media_path),
                 'url' => $message->media_url,
                 'original_name' => $message->media_name,
                 'size' => $message->media_size,
             ], fn (mixed $value): bool => $value !== null && $value !== '') : null,
         ];
+    }
+
+    private function ensureStoragePrefix(?string $path): ?string
+    {
+        $path = trim((string) $path);
+
+        if ($path === '') {
+            return null;
+        }
+
+        if (str_starts_with($path, 'storage/app/public/') || str_starts_with($path, '/')) {
+            return $path;
+        }
+
+        return 'storage/app/public/'.$path;
     }
 
     /**

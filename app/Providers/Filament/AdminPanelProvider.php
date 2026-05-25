@@ -22,6 +22,8 @@ use Filament\Navigation\MenuItem;
 use Filament\Pages\Dashboard;
 use Filament\Panel;
 use Filament\PanelProvider;
+use Filament\Enums\ThemeMode;
+use Filament\Navigation\NavigationGroup;
 use Filament\Support\Colors\Color;
 use Filament\Support\Enums\Width;
 use Filament\Support\Icons\Heroicon;
@@ -60,10 +62,27 @@ class AdminPanelProvider extends PanelProvider
             ->colors([
                 'primary' => Color::Amber,
             ])
+            ->defaultThemeMode(ThemeMode::Light)
             ->viteTheme('resources/css/filament/admin/theme.css')
             ->sidebarCollapsibleOnDesktop()
             ->collapsedSidebarWidth('5rem')
             ->maxContentWidth(Width::Full)
+            ->navigationGroups([
+                NavigationGroup::make(__('Task Management'))
+                    ->icon('heroicon-o-clipboard-document-list'),
+                NavigationGroup::make(__('Reports'))
+                    ->icon('heroicon-o-chart-bar')
+                    ->collapsed(),
+                NavigationGroup::make(__('Administration'))
+                    ->icon('heroicon-o-shield-check')
+                    ->collapsed(),
+                NavigationGroup::make(__('Configuration'))
+                    ->icon('heroicon-o-cog-6-tooth')
+                    ->collapsed(),
+                NavigationGroup::make(__('Settings'))
+                    ->icon('heroicon-o-adjustments-horizontal')
+                    ->collapsed(),
+            ])
             ->renderHook(
                 PanelsRenderHook::AUTH_LOGIN_FORM_AFTER,
                 fn (): HtmlString => new HtmlString(

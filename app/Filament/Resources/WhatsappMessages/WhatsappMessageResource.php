@@ -20,7 +20,7 @@ class WhatsappMessageResource extends Resource
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedChatBubbleLeftRight;
 
-    protected static ?int $navigationSort = 30;
+    protected static ?int $navigationSort = 4;
 
     public static function infolist(Schema $schema): Schema
     {

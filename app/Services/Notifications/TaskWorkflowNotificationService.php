@@ -21,28 +21,36 @@ class TaskWorkflowNotificationService
             return;
         }
 
-        $sender = $message->from_phone ?: 'Unknown sender';
+        $contactName = $message->contact?->name;
+        $phone = $message->from_phone ?: __('رقم غير معروف');
+        $senderLine = $contactName ?: $phone;
+
         $snippetSource = $message->body;
 
         if (blank($snippetSource) && $message->hasMedia()) {
             $snippetSource = match ($message->media_type) {
-                'image' => '[Image]',
-                'document' => '[Document]',
-                'audio' => '[Audio]',
-                'video' => '[Video]',
-                'sticker' => '[Sticker]',
-                default => '[Media]',
+                'image' => '📷 '.__('صورة'),
+                'document' => '📄 '.__('مستند'),
+                'audio' => '🎵 '.__('صوت'),
+                'video' => '🎬 '.__('فيديو'),
+                'sticker' => '🏷️ '.__('ملصق'),
+                default => '📎 '.__('وسائط'),
             };
         }
 
-        $snippet = str((string) ($snippetSource ?: 'No message body'))->limit(120)->toString();
+        $snippet = str((string) ($snippetSource ?: __('بدون نص')))->limit(80)->toString();
+
+        $title = $contactName
+            ? __('رسالة واتساب جديدة من :name', ['name' => $contactName])
+            : __('رسالة واتساب جديدة');
 
         $this->sendDatabaseNotification(
             recipients: $recipients,
-            title: 'New WhatsApp message received',
-            body: "From: {$sender}\n{$snippet}",
+            title: $title,
+            body: $snippet,
             url: route('filament.admin.resources.whatsapp-messages.view', ['record' => $message]),
             status: 'info',
+            icon: 'heroicon-o-chat-bubble-left-ellipsis',
         );
     }
 
@@ -54,14 +62,16 @@ class TaskWorkflowNotificationService
             return;
         }
 
-        $sender = $message->from_phone ?: 'Unknown sender';
+        $contactName = $message->contact?->name;
+        $senderDisplay = $contactName ?: ($message->from_phone ?: __('رقم غير معروف'));
 
         $this->sendDatabaseNotification(
             recipients: $recipients,
-            title: "WhatsApp message converted to task {$task->task_number}",
-            body: "Sender: {$sender}\nTask: {$task->title}",
+            title: __('تم تحويل رسالة واتساب إلى مهمة :number', ['number' => $task->task_number]),
+            body: $senderDisplay.' → '.$task->title,
             url: route('filament.admin.resources.tasks.view', ['record' => $task]),
             status: 'success',
+            icon: 'heroicon-o-check-badge',
         );
     }
 
@@ -73,18 +83,23 @@ class TaskWorkflowNotificationService
             return;
         }
 
-        $body = "Task: {$task->title}";
+        $assigner = $assignment->assignedByUser?->name ?? __('النظام');
+        $parts = ['<p>'.$task->title.'</p>'];
 
         if (filled($assignment->note)) {
-            $body .= "\nNote: {$assignment->note}";
+            $parts[] = '<p>'.__('ملاحظة').': '.str($assignment->note)->limit(60)->toString().'</p>';
         }
+
+        $parts[] = '<p>'.__('بواسطة').': '.$assigner.'</p>';
+        $body = implode('', $parts);
 
         $this->sendDatabaseNotification(
             recipients: collect([$recipient]),
-            title: "Task {$task->task_number} assigned to you",
+            title: __('تم إسناد المهمة :number إليك', ['number' => $task->task_number]),
             body: $body,
             url: route('my-tasks.show', ['task' => $task]),
             status: 'warning',
+            icon: 'heroicon-o-user-plus',
         );
     }
 
@@ -96,14 +111,17 @@ class TaskWorkflowNotificationService
             return;
         }
 
-        $reason = filled($assignment->note) ? $assignment->note : 'No reason provided.';
+        $reason = filled($assignment->note)
+            ? str($assignment->note)->limit(60)->toString()
+            : __('لم يتم تقديم سبب');
 
         $this->sendDatabaseNotification(
             recipients: $recipients,
-            title: "Task {$task->task_number} was rejected",
-            body: "By: {$actor->name}\nReason: {$reason}",
+            title: __('تم رفض المهمة :number', ['number' => $task->task_number]),
+            body: $actor->name.' — '.$reason,
             url: route('filament.admin.resources.tasks.view', ['record' => $task]),
             status: 'danger',
+            icon: 'heroicon-o-x-circle',
         );
     }
 
@@ -121,18 +139,19 @@ class TaskWorkflowNotificationService
             $completedBy = User::query()->whereKey($task->assigned_to_user_id)->value('name');
         }
 
-        $body = "Task: {$task->title}";
+        $body = '<p>'.$task->title.'</p>';
 
         if (filled($completedBy)) {
-            $body .= "\nCompleted by: {$completedBy}";
+            $body .= '<p>'.__('أكملها').': '.$completedBy.'</p>';
         }
 
         $this->sendDatabaseNotification(
             recipients: $recipients,
-            title: "Task {$task->task_number} completed",
+            title: __('تم إكمال المهمة :number', ['number' => $task->task_number]),
             body: $body,
             url: route('filament.admin.resources.tasks.view', ['record' => $task]),
             status: 'success',
+            icon: 'heroicon-o-check-circle',
         );
     }
 
@@ -144,7 +163,8 @@ class TaskWorkflowNotificationService
         string $title,
         string $body,
         ?string $url = null,
-        string $status = 'info'
+        string $status = 'info',
+        ?string $icon = null
     ): void {
         if ($recipients->isEmpty()) {
             return;
@@ -155,10 +175,14 @@ class TaskWorkflowNotificationService
             ->body($body)
             ->status($status);
 
+        if ($icon) {
+            $notification->icon($icon);
+        }
+
         if ($url) {
             $notification->actions([
                 Action::make('view')
-                    ->label('View')
+                    ->label(__('عرض'))
                     ->button()
                     ->markAsRead()
                     ->url($url),

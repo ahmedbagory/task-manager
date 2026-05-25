@@ -731,7 +731,14 @@ async function processIncomingMessage(baileysMessage) {
   const key = baileysMessage.key;
   const remoteJid = normalizeText(key.remoteJid);
 
-  if (!remoteJid || !remoteJid.endsWith('@g.us')) {
+  if (!remoteJid) {
+    return;
+  }
+
+  const isGroupMessage = remoteJid.endsWith('@g.us');
+  const isDirectMessage = remoteJid.endsWith('@s.whatsapp.net');
+
+  if (!isGroupMessage && !isDirectMessage) {
     return;
   }
 
@@ -743,11 +750,18 @@ async function processIncomingMessage(baileysMessage) {
     return;
   }
 
-  const group = groupsById.get(remoteJid);
-  const groupName = normalizeText(group && group.subject) || null;
+  let groupId = null;
+  let groupName = null;
 
-  if (!shouldProcessGroup(remoteJid, groupName)) {
-    return;
+  if (isGroupMessage) {
+    const group = groupsById.get(remoteJid);
+    groupName = normalizeText(group && group.subject) || null;
+
+    if (!shouldProcessGroup(remoteJid, groupName)) {
+      return;
+    }
+
+    groupId = remoteJid;
   }
 
   const container = resolveMessageContainer(baileysMessage.message);
@@ -761,36 +775,47 @@ async function processIncomingMessage(baileysMessage) {
   const messageType = extractMessageType(container);
   const keySnapshot = toPlainObject(key);
 
-  // For group messages, sender phone comes from participant fields, NOT remoteJid (which is the group JID).
-  const participantCandidates = [
-    keySnapshot.participantPn,
-    keySnapshot.participantPN,
-    keySnapshot.participant_pn,
-    key.participantPn,
-    keySnapshot.participant,
-    key.participant,
-  ];
+  let fromPhone = null;
 
-  let fromParticipant = null;
-  for (const candidate of participantCandidates) {
-    const phone = extractPhoneFromJid(candidate);
-    if (phone) {
-      fromParticipant = phone;
-      break;
+  if (isGroupMessage) {
+    // For group messages, sender phone comes from participant fields, NOT remoteJid (which is the group JID).
+    const participantCandidates = [
+      keySnapshot.participantPn,
+      keySnapshot.participantPN,
+      keySnapshot.participant_pn,
+      key.participantPn,
+      keySnapshot.participant,
+      key.participant,
+    ];
+
+    for (const candidate of participantCandidates) {
+      const phone = extractPhoneFromJid(candidate);
+      if (phone) {
+        fromPhone = phone;
+        break;
+      }
     }
-  }
 
-  if (!fromParticipant) {
-    logger.warn({ remote_jid: remoteJid, msg_id: normalizeText(key.id) }, 'Group message with no valid participant phone — skipped');
-    return;
+    if (!fromPhone) {
+      logger.warn({ remote_jid: remoteJid, msg_id: normalizeText(key.id) }, 'Group message with no valid participant phone — skipped');
+      return;
+    }
+  } else {
+    // For direct messages, the sender IS the remoteJid.
+    fromPhone = extractPhoneFromJid(remoteJid);
+
+    if (!fromPhone) {
+      logger.warn({ remote_jid: remoteJid, msg_id: normalizeText(key.id) }, 'Direct message with no valid phone — skipped');
+      return;
+    }
   }
 
   const payload = {
     provider: BRIDGE_PROVIDER,
     provider_message_id: normalizeText(key.id),
-    from: fromParticipant,
-    to: remoteJid,
-    group_id: remoteJid,
+    from: fromPhone,
+    to: isGroupMessage ? remoteJid : extractPhoneFromJid(socket?.user?.id),
+    group_id: groupId,
     group_name: groupName,
     sender_name: normalizeText(baileysMessage.pushName),
     message_type: messageType,
@@ -809,6 +834,11 @@ async function processIncomingMessage(baileysMessage) {
       from: payload.from,
       group_id: payload.group_id,
       group_name: payload.group_name,
+      is_direct: isDirectMessage,
+      message_type: messageType,
+      has_media: media.has_media || false,
+      media_type: media.type || null,
+      media_rejected: media.rejected || false,
     }, 'Message forwarded to Laravel');
   } catch (error) {
     const responseCode = error.response ? error.response.status : null;
@@ -900,6 +930,7 @@ async function sendOutboundMessage(msg) {
       message_id: messageId,
       to: targetJid,
       has_attachment: attachment !== null,
+      attachment_type: attachment && attachment.type ? attachment.type : null,
       whatsapp_id: sentMsgId,
     }, 'Outbound message sent via WhatsApp');
 
@@ -950,6 +981,32 @@ function resolveMessageTargetJid(to, groupId) {
   return `${cleanPhone}@s.whatsapp.net`;
 }
 
+function resolveAttachmentSource(localPath) {
+  if (!localPath) {
+    return null;
+  }
+
+  if (path.isAbsolute(localPath)) {
+    return fs.existsSync(localPath) ? localPath : null;
+  }
+
+  // Try the path as-is relative to project root.
+  const direct = path.resolve(projectRootDir, localPath);
+  if (fs.existsSync(direct)) {
+    return direct;
+  }
+
+  // Fallback: if the path doesn't start with storage/app/public/, prepend it.
+  if (!localPath.startsWith('storage/app/public/') && !localPath.startsWith('storage\\app\\public\\')) {
+    const withPrefix = path.resolve(projectRootDir, 'storage', 'app', 'public', localPath);
+    if (fs.existsSync(withPrefix)) {
+      return withPrefix;
+    }
+  }
+
+  return null;
+}
+
 function resolveAttachmentContent(attachment, messageText) {
   if (!attachment) {
     return normalizeText(messageText) ? { text: messageText } : null;
@@ -959,18 +1016,19 @@ function resolveAttachmentContent(attachment, messageText) {
   const mimeType = normalizeText(attachment.mime_type || attachment.mimetype);
   const localPath = normalizeText(attachment.path);
   const remoteUrl = normalizeText(attachment.url);
-  const source = localPath
-    ? path.isAbsolute(localPath)
-      ? localPath
-      : path.resolve(projectRootDir, localPath)
-    : remoteUrl;
+
+  let source = null;
+  if (localPath) {
+    source = resolveAttachmentSource(localPath);
+    if (!source) {
+      throw new Error(`Attachment file not found: ${localPath}`);
+    }
+  } else {
+    source = remoteUrl;
+  }
 
   if (!source) {
     throw new Error('Attachment path/url is missing.');
-  }
-
-  if (localPath && !fs.existsSync(source)) {
-    throw new Error(`Attachment file not found: ${localPath}`);
   }
 
   if (!isAllowedMediaMime(type, mimeType)) {
@@ -1039,6 +1097,7 @@ async function sendDirectMessageRequest(payload) {
     to: targetJid,
     has_attachment: attachment !== null,
     attachment_type: attachment && attachment.type ? attachment.type : null,
+    attachment_mime: attachment && attachment.mime_type ? attachment.mime_type : null,
   }, 'Direct WhatsApp send requested');
 
   const result = await socket.sendMessage(targetJid, content);
@@ -1173,7 +1232,15 @@ async function connect() {
     }
 
     for (const incomingMessage of messages) {
-      await processIncomingMessage(incomingMessage);
+      try {
+        await processIncomingMessage(incomingMessage);
+      } catch (error) {
+        logger.error({
+          error: error.message,
+          msg_id: incomingMessage?.key?.id || null,
+          remote_jid: incomingMessage?.key?.remoteJid || null,
+        }, 'Uncaught error processing incoming message');
+      }
     }
   });
 }

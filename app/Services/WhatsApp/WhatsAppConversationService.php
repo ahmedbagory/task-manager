@@ -194,7 +194,7 @@ class WhatsAppConversationService
             'attachment' => $attachmentMeta ? [
                 'type' => $attachmentMeta['type'] ?? null,
                 'mime_type' => $attachmentMeta['mime_type'] ?? null,
-                'path' => $attachmentMeta['path'] ?? null,
+                'path' => $this->ensureStoragePrefix($attachmentMeta['path'] ?? null),
                 'url' => $attachmentMeta['url'] ?? null,
                 'original_name' => $attachmentMeta['original_name'] ?? null,
                 'size' => $attachmentMeta['size'] ?? null,
@@ -204,7 +204,7 @@ class WhatsAppConversationService
         $response = $this->bridgeApiClient->sendMessage($payload);
 
         if (! is_array($response)) {
-            return $this->markFailedAndRespond(
+            return $this->markQueuedForRetry(
                 $message,
                 __('The local WhatsApp bridge did not respond to the send request.'),
             );
@@ -229,6 +229,11 @@ class WhatsAppConversationService
 
         $error = $this->nullableString($response['error'] ?? null) ?: __('The bridge rejected the send request.');
 
+        // Bridge returned an explicit error — queue for retry via polling instead of permanent failure.
+        if (($response['error'] ?? null) === 'Not found' || str_contains(strtolower($error), 'not connected')) {
+            return $this->markQueuedForRetry($message, $error, $response);
+        }
+
         return $this->markFailedAndRespond($message, $error, $response);
     }
 
@@ -250,6 +255,43 @@ class WhatsAppConversationService
         ])->save();
 
         return $message->fresh();
+    }
+
+    /**
+     * Queue a message for retry via the bridge outbound polling loop.
+     *
+     * @param  array<string, mixed>|null  $responseBody
+     */
+    private function markQueuedForRetry(WhatsappMessage $message, string $reason, ?array $responseBody = null): WhatsAppSendResult
+    {
+        Log::info('WhatsApp conversation send queued for bridge retry.', [
+            'message_id' => $message->id,
+            'reason' => $reason,
+        ]);
+
+        $rawPayload = is_array($message->raw_payload) ? $message->raw_payload : [];
+        $rawPayload['bridge_send_attempt'] = [
+            'error' => $reason,
+            'response' => $responseBody,
+            'queued_at' => now()->toIso8601String(),
+        ];
+
+        $message->forceFill([
+            'status' => 'queued_bridge',
+            'failed_reason' => null,
+            'raw_payload' => $rawPayload,
+        ])->save();
+
+        $message = $message->fresh();
+
+        return new WhatsAppSendResult(
+            sent: false,
+            status: 'queued_bridge',
+            whatsappMessageId: null,
+            httpStatusCode: null,
+            messageRecord: $message,
+            responseBody: $responseBody,
+        );
     }
 
     /**
@@ -311,6 +353,21 @@ class WhatsAppConversationService
         $contact->save();
 
         return $contact;
+    }
+
+    private function ensureStoragePrefix(?string $path): ?string
+    {
+        $path = trim((string) $path);
+
+        if ($path === '') {
+            return null;
+        }
+
+        if (str_starts_with($path, 'storage/app/public/') || str_starts_with($path, '/')) {
+            return $path;
+        }
+
+        return 'storage/app/public/'.$path;
     }
 
     private function normalizePhone(mixed $value): string

@@ -22,11 +22,27 @@ class ListWhatsappMessages extends ListRecords
     protected string $view = 'filament.resources.whatsapp-messages.pages.list-whatsapp-messages';
 
     /**
-     * @var Collection<int, WhatsappContact>|null
+     * Unified conversation list cache (groups + direct contacts).
+     *
+     * Each item is an array:
+     *   - type: 'group' | 'contact'
+     *   - id: group_id string or contact int id
+     *   - name: display name
+     *   - phone: phone or null for groups
+     *   - avatar: first letter for avatar
+     *   - last_message_at: Carbon|null
+     *   - preview: string (last message snippet)
+     *   - members_count: int (for groups)
+     *
+     * @var Collection<int, array<string, mixed>>|null
      */
     private ?Collection $conversationCache = null;
 
     private ?WhatsappContact $activeContactCache = null;
+
+    private ?string $activeGroupIdCache = null;
+
+    private ?Collection $activeGroupMessagesCache = null;
 
     protected function getHeaderActions(): array
     {
@@ -34,7 +50,9 @@ class ListWhatsappMessages extends ListRecords
     }
 
     /**
-     * @return Collection<int, WhatsappContact>
+     * Get unified conversation list: groups + direct contacts.
+     *
+     * @return Collection<int, array<string, mixed>>
      */
     public function getConversations(): Collection
     {
@@ -44,26 +62,196 @@ class ListWhatsappMessages extends ListRecords
 
         $search = $this->getSearchTerm();
 
-        $query = WhatsappContact::query()
+        // --- Group conversations ---
+        $groupQuery = WhatsappMessage::query()
+            ->whereNotNull('group_id')
+            ->where('group_id', '!=', '');
+
+        if ($search !== '') {
+            $groupQuery->where(function ($q) use ($search): void {
+                $q->where('group_name', 'like', "%{$search}%")
+                    ->orWhere('body', 'like', "%{$search}%")
+                    ->orWhereHas('contact', fn ($cq) => $cq->where('name', 'like', "%{$search}%")->orWhere('phone', 'like', "%{$search}%"));
+            });
+        }
+
+        $groupConversations = $groupQuery
+            ->selectRaw('group_id, MAX(group_name) as group_name, MAX(id) as last_msg_id, MAX(COALESCE(received_at, sent_at, created_at)) as last_message_at, COUNT(*) as msg_count, COUNT(DISTINCT contact_id) as members_count')
+            ->groupBy('group_id')
+            ->orderByDesc('last_message_at')
+            ->limit(50)
+            ->get()
+            ->map(function ($row) {
+                $lastMsg = WhatsappMessage::query()->find($row->last_msg_id);
+                $preview = trim((string) ($lastMsg?->body ?? ''));
+
+                if ($preview === '' && $lastMsg?->hasMedia()) {
+                    $preview = match ($lastMsg->media_type) {
+                        'image' => __('Image'),
+                        'document' => __('Document'),
+                        'audio' => __('Audio'),
+                        'video' => __('Video'),
+                        default => __('Media message'),
+                    };
+                } elseif ($preview === '') {
+                    $preview = __('No content');
+                }
+
+                $senderName = $lastMsg?->contact?->name;
+                if ($senderName && $lastMsg->isIncoming()) {
+                    $preview = $senderName.': '.$preview;
+                }
+
+                return [
+                    'type' => 'group',
+                    'id' => $row->group_id,
+                    'name' => $row->group_name ?: __('Unnamed group'),
+                    'phone' => null,
+                    'avatar' => mb_substr($row->group_name ?: 'G', 0, 1),
+                    'last_message_at' => $row->last_message_at ? Carbon::parse($row->last_message_at) : null,
+                    'preview' => str($preview)->limit(80)->toString(),
+                    'members_count' => (int) $row->members_count,
+                ];
+            });
+
+        // --- Direct (non-group) contact conversations ---
+        $contactQuery = WhatsappContact::query()
             ->with(['latestMessage.task'])
-            ->whereHas('messages')
+            ->whereHas('messages', fn ($q) => $q->whereNull('group_id'))
             ->orderByDesc('last_message_at')
             ->orderByDesc('id');
 
         if ($search !== '') {
-            $query->where(function ($builder) use ($search): void {
+            $contactQuery->where(function ($builder) use ($search): void {
                 $builder
                     ->where('phone', 'like', "%{$search}%")
                     ->orWhere('name', 'like', "%{$search}%")
                     ->orWhereHas('messages', function ($messageQuery) use ($search): void {
-                        $messageQuery->where('body', 'like', "%{$search}%");
+                        $messageQuery->whereNull('group_id')->where('body', 'like', "%{$search}%");
                     });
             });
         }
 
-        return $this->conversationCache = $query
-            ->limit(150)
-            ->get();
+        $contactConversations = $contactQuery
+            ->limit(100)
+            ->get()
+            ->map(function (WhatsappContact $contact) {
+                $latestDirect = $contact->messages()
+                    ->whereNull('group_id')
+                    ->latest('id')
+                    ->first();
+
+                $preview = trim((string) ($latestDirect?->body ?? ''));
+
+                if ($preview === '' && $latestDirect?->media_rejected) {
+                    $preview = __('Rejected media');
+                } elseif ($preview === '' && $latestDirect?->hasMedia()) {
+                    $preview = match ($latestDirect->media_type) {
+                        'image' => __('Image'),
+                        'document' => __('Document'),
+                        'audio' => __('Audio'),
+                        'video' => __('Video'),
+                        'sticker' => __('Sticker'),
+                        default => __('Media message'),
+                    };
+                } elseif ($preview === '') {
+                    $preview = __('No content');
+                }
+
+                $lastAt = $latestDirect
+                    ? ($latestDirect->received_at ?? $latestDirect->sent_at ?? $latestDirect->created_at)
+                    : $contact->last_message_at;
+
+                return [
+                    'type' => 'contact',
+                    'id' => $contact->id,
+                    'name' => $contact->name ?: __('Unknown contact'),
+                    'phone' => $contact->phone,
+                    'avatar' => strtoupper(mb_substr($contact->name ?: $contact->phone, 0, 1)),
+                    'last_message_at' => $lastAt,
+                    'preview' => str($preview)->limit(80)->toString(),
+                    'members_count' => 0,
+                    'contact' => $contact,
+                ];
+            });
+
+        // Merge and sort by last_message_at descending
+        $merged = $groupConversations->concat($contactConversations)
+            ->sortByDesc(fn (array $item) => $item['last_message_at']?->getTimestamp() ?? 0)
+            ->values();
+
+        return $this->conversationCache = $merged;
+    }
+
+    /**
+     * Determine which type of conversation is active.
+     *
+     * @return array{type: string, id: string|int}|null
+     */
+    public function getActiveSelection(): ?array
+    {
+        $groupId = request()->query('group');
+        $contactId = request()->integer('contact');
+
+        if (filled($groupId)) {
+            return ['type' => 'group', 'id' => $groupId];
+        }
+
+        if ($contactId > 0) {
+            return ['type' => 'contact', 'id' => $contactId];
+        }
+
+        // Default to first conversation in the list
+        $conversations = $this->getConversations();
+        $first = $conversations->first();
+
+        if (! $first) {
+            return null;
+        }
+
+        return ['type' => $first['type'], 'id' => $first['id']];
+    }
+
+    public function isGroupActive(): bool
+    {
+        return ($this->getActiveSelection()['type'] ?? '') === 'group';
+    }
+
+    public function getActiveGroupId(): ?string
+    {
+        $selection = $this->getActiveSelection();
+
+        if (! $selection || $selection['type'] !== 'group') {
+            return null;
+        }
+
+        return (string) $selection['id'];
+    }
+
+    public function getActiveGroupName(): ?string
+    {
+        $groupId = $this->getActiveGroupId();
+
+        if (! $groupId) {
+            return null;
+        }
+
+        $conv = $this->getConversations()->first(fn (array $item) => $item['type'] === 'group' && $item['id'] === $groupId);
+
+        return $conv['name'] ?? null;
+    }
+
+    public function getActiveGroupMembersCount(): int
+    {
+        $groupId = $this->getActiveGroupId();
+
+        if (! $groupId) {
+            return 0;
+        }
+
+        $conv = $this->getConversations()->first(fn (array $item) => $item['type'] === 'group' && $item['id'] === $groupId);
+
+        return (int) ($conv['members_count'] ?? 0);
     }
 
     public function getActiveContact(): ?WhatsappContact
@@ -72,18 +260,20 @@ class ListWhatsappMessages extends ListRecords
             return $this->activeContactCache;
         }
 
-        $selectedId = request()->integer('contact');
-        $conversations = $this->getConversations();
+        $selection = $this->getActiveSelection();
 
-        $contact = $selectedId > 0
-            ? $conversations->firstWhere('id', $selectedId)
-            : $conversations->first();
+        if (! $selection || $selection['type'] !== 'contact') {
+            return null;
+        }
+
+        $contact = WhatsappContact::query()->find($selection['id']);
 
         if (! $contact) {
             return null;
         }
 
         return $this->activeContactCache = $contact->loadMissing([
+            'messages' => fn ($q) => $q->whereNull('group_id'),
             'messages.task',
             'messages.sentByUser',
         ]);
@@ -94,6 +284,15 @@ class ListWhatsappMessages extends ListRecords
      */
     public function getGroupedMessages(): Collection
     {
+        if ($this->isGroupActive()) {
+            return $this->getGroupedMessagesForGroup();
+        }
+
+        return $this->getGroupedMessagesForContact();
+    }
+
+    private function getGroupedMessagesForContact(): Collection
+    {
         $contact = $this->getActiveContact();
 
         if (! $contact) {
@@ -101,8 +300,35 @@ class ListWhatsappMessages extends ListRecords
         }
 
         $messages = $contact->messages
+            ->filter(fn (WhatsappMessage $m) => blank($m->group_id))
             ->sortBy(fn (WhatsappMessage $message): int => $this->messageDate($message)?->getTimestamp() ?? 0)
             ->values();
+
+        return $messages
+            ->groupBy(fn (WhatsappMessage $message): string => ($this->messageDate($message)?->format('Y-m-d')) ?: 'unknown')
+            ->map(function (Collection $group, string $dateKey): array {
+                return [
+                    'label' => $this->dateLabel($dateKey),
+                    'messages' => $group->values(),
+                ];
+            })
+            ->values();
+    }
+
+    private function getGroupedMessagesForGroup(): Collection
+    {
+        $groupId = $this->getActiveGroupId();
+
+        if (! $groupId) {
+            return collect();
+        }
+
+        $messages = WhatsappMessage::query()
+            ->where('group_id', $groupId)
+            ->with(['contact', 'task', 'sentByUser'])
+            ->orderBy('id')
+            ->limit(500)
+            ->get();
 
         return $messages
             ->groupBy(fn (WhatsappMessage $message): string => ($this->messageDate($message)?->format('Y-m-d')) ?: 'unknown')
@@ -164,6 +390,14 @@ class ListWhatsappMessages extends ListRecords
      */
     public function getReplyGroup(): ?array
     {
+        // If already viewing a group conversation, use that group
+        if ($this->isGroupActive()) {
+            $groupId = $this->getActiveGroupId();
+            $groupName = $this->getActiveGroupName();
+
+            return $groupId ? ['group_id' => $groupId, 'group_name' => $groupName] : null;
+        }
+
         $contact = $this->getActiveContact();
 
         if (! $contact) {
@@ -242,6 +476,26 @@ class ListWhatsappMessages extends ListRecords
         return WhatsappMessageResource::getUrl('index', $params);
     }
 
+    /**
+     * Build URL for a conversation item (group or contact).
+     */
+    public function conversationItemUrl(array $item): string
+    {
+        if ($item['type'] === 'group') {
+            $params = array_filter([
+                'group' => $item['id'],
+                'search' => $this->getSearchTerm(),
+            ], fn (mixed $value): bool => filled($value));
+        } else {
+            $params = array_filter([
+                'contact' => $item['id'],
+                'search' => $this->getSearchTerm(),
+            ], fn (mixed $value): bool => filled($value));
+        }
+
+        return WhatsappMessageResource::getUrl('index', $params);
+    }
+
     public function indexUrlWithoutContact(): string
     {
         $params = array_filter([
@@ -249,6 +503,69 @@ class ListWhatsappMessages extends ListRecords
         ], fn (mixed $value): bool => filled($value));
 
         return WhatsappMessageResource::getUrl('index', $params);
+    }
+
+    /**
+     * Check if a conversation item is the active one.
+     */
+    public function isConversationActive(array $item): bool
+    {
+        $selection = $this->getActiveSelection();
+
+        if (! $selection) {
+            return false;
+        }
+
+        return $selection['type'] === $item['type'] && (string) $selection['id'] === (string) $item['id'];
+    }
+
+    /**
+     * Get sender display name for a group message bubble.
+     */
+    public function messageSenderName(WhatsappMessage $message): ?string
+    {
+        if (! $this->isGroupActive()) {
+            return null;
+        }
+
+        if ($message->isOutgoing()) {
+            return $message->sentByUser?->name ?? __('You');
+        }
+
+        return $message->contact?->name ?? $message->from_phone ?? __('Unknown');
+    }
+
+    /**
+     * Get a phone number to use as the "phone" hidden field when sending from a group conversation.
+     * The bridge routes via group_id, but the form validation requires a phone field.
+     */
+    public function getGroupSendPhone(): string
+    {
+        $groupId = $this->getActiveGroupId();
+
+        if (! $groupId) {
+            return '';
+        }
+
+        // Get any outbound message phone or the first contact's phone
+        $msg = WhatsappMessage::query()
+            ->where('group_id', $groupId)
+            ->whereNotNull('from_phone')
+            ->where('from_phone', '!=', '')
+            ->latest('id')
+            ->first();
+
+        if ($msg?->from_phone) {
+            return $msg->from_phone;
+        }
+
+        // Fallback: first contact's phone from the group
+        $contact = WhatsappMessage::query()
+            ->where('group_id', $groupId)
+            ->whereNotNull('contact_id')
+            ->first()?->contact;
+
+        return $contact?->phone ?? '';
     }
 
     private function getSearchTerm(): string

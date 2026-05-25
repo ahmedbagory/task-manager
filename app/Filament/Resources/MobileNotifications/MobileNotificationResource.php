@@ -9,6 +9,7 @@ use App\Filament\Resources\MobileNotifications\RelationManagers\RecipientsRelati
 use App\Filament\Resources\MobileNotifications\Schemas\MobileNotificationForm;
 use App\Filament\Resources\MobileNotifications\Schemas\MobileNotificationInfolist;
 use App\Filament\Resources\MobileNotifications\Tables\MobileNotificationsTable;
+use App\Filament\Resources\MobileNotifications\Widgets\NotificationStatsWidget;
 use App\Models\MobileNotification;
 use BackedEnum;
 use Filament\Resources\Resource;
@@ -23,7 +24,7 @@ class MobileNotificationResource extends Resource
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedBellAlert;
 
-    protected static ?int $navigationSort = 11;
+    protected static ?int $navigationSort = 2;
 
     public static function form(Schema $schema): Schema
     {
@@ -38,6 +39,13 @@ class MobileNotificationResource extends Resource
     public static function table(Table $table): Table
     {
         return MobileNotificationsTable::configure($table);
+    }
+
+    public static function getWidgets(): array
+    {
+        return [
+            NotificationStatsWidget::class,
+        ];
     }
 
     public static function getRelations(): array
