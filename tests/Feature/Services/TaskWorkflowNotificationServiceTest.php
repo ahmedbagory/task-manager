@@ -74,6 +74,13 @@ class TaskWorkflowNotificationServiceTest extends TestCase
             'direction' => 'inbound',
             'from_phone' => '+201000000200',
             'body' => 'Water leakage in warehouse',
+            'message_type' => 'text',
+            'media_url' => null,
+            'media_type' => null,
+            'media_mime' => null,
+            'media_path' => null,
+            'media_name' => null,
+            'media_size' => null,
         ]);
 
         $task = app(WhatsAppInboxService::class)->convertMessageToTask(
@@ -85,8 +92,8 @@ class TaskWorkflowNotificationServiceTest extends TestCase
             actor: $dispatcher,
         );
 
-        $this->assertNotificationWithTitleContains($admin, "تم تحويل رسالة واتساب إلى مهمة {$task->task_number}");
-        $this->assertNotificationWithTitleContains($dispatcher, "تم تحويل رسالة واتساب إلى مهمة {$task->task_number}");
+        $this->assertNotificationWithTitleContains($admin, "تم تحويل رسالة واتساب إلى مهمة {$task->displayNumber()}");
+        $this->assertNotificationWithTitleContains($dispatcher, "تم تحويل رسالة واتساب إلى مهمة {$task->displayNumber()}");
     }
 
     public function test_task_assignment_notifies_assigned_employee(): void
@@ -170,8 +177,8 @@ class TaskWorkflowNotificationServiceTest extends TestCase
 
         app(TaskAssignmentService::class)->confirmResolution($task, $reporter);
 
-        $this->assertNotificationWithTitleContains($admin, "تم إكمال المهمة {$task->task_number}");
-        $this->assertNotificationWithTitleContains($dispatcher, "تم إكمال المهمة {$task->task_number}");
+        $this->assertNotificationWithTitleContains($admin, "تم إكمال المهمة {$task->displayNumber()}");
+        $this->assertNotificationWithTitleContains($dispatcher, "تم إكمال المهمة {$task->displayNumber()}");
         $this->assertNotificationWithTitleContains($employee, 'تم تأكيد حل المشكلة');
     }
 

@@ -61,6 +61,12 @@ class TaskInfolist
                                 ->pluck('name')
                                 ->implode('، ') ?: '—')
                             ->placeholder('-'),
+                        TextEntry::make('assigned_by_summary')
+                            ->label('تم الإسناد بواسطة')
+                            ->state(fn (Task $record): string => $record->latestAssignment?->assignedByUser?->name
+                                ?: $record->createdByUser?->name
+                                ?: '—')
+                            ->placeholder('-'),
                         TextEntry::make('location')
                             ->label('الموقع')
                             ->placeholder('-'),

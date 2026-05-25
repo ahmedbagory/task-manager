@@ -49,6 +49,7 @@ class FcmNotificationService
             'task_id' => (string) $task->id,
             'task_title' => $task->title,
             'task_number' => $task->task_number ?? '',
+            'display_number' => $task->displayNumber(),
             'assignment_context' => $context,
             'route' => '/tasks/' . $task->id,
         ]);
@@ -136,6 +137,7 @@ class FcmNotificationService
             'type' => 'task_dispatcher_update',
             'task_id' => (string) $task->id,
             'task_number' => $task->task_number ?? '',
+            'display_number' => $task->displayNumber(),
             'action' => $action,
         ];
 
@@ -200,6 +202,7 @@ class FcmNotificationService
             'task_id' => (string) $task->id,
             'task_title' => $task->title,
             'task_number' => $task->task_number ?? '',
+            'display_number' => $task->displayNumber(),
             'assignment_context' => $context,
         ];
 
@@ -232,11 +235,12 @@ class FcmNotificationService
         $this->sendNotificationToUser(
             recipient: $recipient,
             title: 'بانتظار تأكيد حل المشكلة',
-            body: 'تم إرسال المهمة: '.$task->title.' للتأكيد. هل تم حل المشكلة؟',
+            body: 'تم إرسال المهمة '.$task->displayNumber().': '.$task->title.' للتأكيد. هل تم حل المشكلة؟',
             data: [
                 'type' => 'reporter_confirmation_request',
                 'task_id' => (string) $task->id,
                 'task_number' => $task->task_number ?? '',
+                'display_number' => $task->displayNumber(),
                 'route' => '/tasks/' . $task->id,
             ],
         );
@@ -251,7 +255,7 @@ class FcmNotificationService
             task: $task,
             resolvedUserIds: $resolvedUserIds,
             title: 'المبلّغ أكد أن المشكلة لم تُحل',
-            body: 'تم رفض إغلاق المهمة: '.$task->title.'. راجع التعليق وأكمل المتابعة.',
+            body: 'تم رفض إغلاق المهمة '.$task->displayNumber().': '.$task->title.'. راجع التعليق وأكمل المتابعة.',
             type: 'reporter_rejected_resolution',
         );
     }
@@ -265,8 +269,24 @@ class FcmNotificationService
             task: $task,
             resolvedUserIds: $resolvedUserIds,
             title: 'تم تأكيد حل المشكلة',
-            body: 'أكد المبلّغ حل المشكلة وتم إغلاق المهمة: '.$task->title,
+            body: 'أكد المبلّغ حل المشكلة وتم إغلاق المهمة '.$task->displayNumber().': '.$task->title,
             type: 'reporter_confirmed_resolution',
+        );
+    }
+
+    /**
+     * @param  array<int, int>  $resolvedUserIds
+     */
+    public function notifyTaskReopenedToAssignees(Task $task, array $resolvedUserIds, ?User $actor = null): void
+    {
+        $actorName = $actor?->name ?? __('النظام');
+
+        $this->notifyUsers(
+            task: $task,
+            resolvedUserIds: $resolvedUserIds,
+            title: 'تمت إعادة فتح المهمة',
+            body: $actorName.' أعاد فتح المهمة '.$task->displayNumber().': '.$task->title,
+            type: 'task_reopened',
         );
     }
 
@@ -556,18 +576,20 @@ class FcmNotificationService
      */
     private function assignmentCopy(Task $task, string $actorName, string $context): array
     {
+        $taskLine = $task->displayNumber().': '.$task->title;
+
         return match ($context) {
             'added_assignee' => [
                 'تمت إضافتك إلى مهمة',
-                'تمت إضافتك ضمن فريق العمل على المهمة: '.$task->title,
+                'تمت إضافتك ضمن فريق العمل على المهمة '.$taskLine,
             ],
             'reassigned' => [
                 'تمت إعادة تعيين مهمة إليك',
-                'تم نقل/إعادة تعيين المهمة: '.$task->title.' إليك بواسطة '.$actorName,
+                'تم نقل/إعادة تعيين المهمة '.$taskLine.' إليك بواسطة '.$actorName,
             ],
             default => [
                 'تم إسناد مهمة جديدة إليك',
-                'تم إسناد المهمة: '.$task->title.' إليك بواسطة '.$actorName,
+                'تم إسناد المهمة '.$taskLine.' إليك بواسطة '.$actorName,
             ],
         };
     }
@@ -598,6 +620,7 @@ class FcmNotificationService
                     'type' => $type,
                     'task_id' => (string) $task->id,
                     'task_number' => $task->task_number ?? '',
+                    'display_number' => $task->displayNumber(),
                     'route' => '/tasks/' . $task->id,
                 ],
             );

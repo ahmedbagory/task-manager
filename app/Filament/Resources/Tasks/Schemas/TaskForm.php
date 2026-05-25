@@ -6,17 +6,18 @@ use App\Enums\TaskPriority;
 use App\Enums\TaskSource;
 use App\Enums\TaskStatus;
 use App\Models\Department;
+use App\Models\Task;
 use App\Models\User;
 use App\Services\Departments\DepartmentHierarchyService;
 use App\Support\Rbac;
+use Filament\Forms\Components\CheckboxList;
 use Filament\Forms\Components\DateTimePicker;
+use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
-use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
-use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 use Illuminate\Database\Eloquent\Builder;
 
@@ -26,16 +27,36 @@ class TaskForm
     {
         return $schema
             ->components([
-                Section::make('تفاصيل المهمة')
+                Section::make('إنشاء مهمة')
+                    ->description('أدخل بيانات المهمة، ثم حدّد صاحب الطلب والمكلفين بشكل منفصل.')
                     ->components([
                         TextInput::make('title')
-                            ->label('العنوان')
+                            ->label('عنوان المهمة')
                             ->required()
                             ->maxLength(255)
                             ->columnSpanFull(),
                         Textarea::make('description')
                             ->label('الوصف')
-                            ->rows(4)
+                            ->rows(5)
+                            ->columnSpanFull(),
+                        Select::make('reported_by_user_id')
+                            ->label('صاحب الطلب')
+                            ->options(fn (): array => self::internalUserOptions())
+                            ->searchable()
+                            ->preload()
+                            ->required(fn (Get $get): bool => blank($get('reported_by_phone'))),
+                        TextInput::make('reported_by_phone')
+                            ->label('هاتف صاحب الطلب')
+                            ->tel()
+                            ->maxLength(255)
+                            ->placeholder('اختياري عند وجود حساب موظف مرتبط'),
+                        Select::make('assignee_ids')
+                            ->label('المكلفين')
+                            ->options(fn (): array => self::internalUserOptions())
+                            ->multiple()
+                            ->searchable()
+                            ->preload()
+                            ->helperText('صاحب الطلب لا يُضاف إلى المكلفين إلا إذا تم اختياره هنا صراحةً.')
                             ->columnSpanFull(),
                         Select::make('priority')
                             ->label('الأولوية')
@@ -45,26 +66,24 @@ class TaskForm
                         Select::make('status')
                             ->label('الحالة')
                             ->options(TaskStatus::formOptions())
-                            ->default(TaskStatus::NEW->value)
-                            ->required(),
+                            ->required(fn (?Task $record): bool => $record !== null)
+                            ->visible(fn (?Task $record): bool => $record !== null),
                         Select::make('source')
                             ->label('المصدر')
                             ->options(TaskSource::options())
                             ->default(TaskSource::MANUAL->value)
-                            ->required()
                             ->disabled()
                             ->dehydrated(),
                     ])
                     ->columns(3),
-                Section::make('التصنيف')
+                Section::make('التصنيف والموقع')
                     ->components([
                         Select::make('department_id')
-                            ->label('القسم / الوحدة')
+                            ->label('القسم / الفرع / الوحدة')
                             ->options(fn (): array => app(DepartmentHierarchyService::class)->hierarchyOptions())
                             ->searchable()
                             ->preload()
-                            ->live()
-                            ->afterStateUpdated(fn (Set $set) => $set('category_id', null)),
+                            ->live(),
                         Select::make('category_id')
                             ->label('التصنيف')
                             ->relationship(
@@ -95,92 +114,59 @@ class TaskForm
                         TextInput::make('location')
                             ->label('الموقع')
                             ->maxLength(255),
-                    ])
-                    ->columns(3),
-                Section::make(__('الإسناد'))
-                    ->components([
-                        Toggle::make('assign_to_all')
-                            ->label(__('إسناد للكل'))
-                            ->helperText(__('عند التفعيل سيتم إسناد المهمة لجميع الموظفين.'))
-                            ->live()
-                            ->afterStateUpdated(function (Set $set, $state): void {
-                                if ($state) {
-                                    $set('assignment_target_departments', []);
-                                    $set('assignment_target_units', []);
-                                    $set('assignment_target_users', []);
-                                }
-                            })
-                            ->columnSpanFull(),
-                        Select::make('assignment_target_departments')
-                            ->label(__('الأقسام'))
-                            ->options(fn (): array => app(DepartmentHierarchyService::class)->topLevelOptions())
-                            ->multiple()
-                            ->searchable()
-                            ->preload()
-                            ->live()
-                            ->afterStateUpdated(fn (Set $set) => $set('assignment_target_units', []))
-                            ->disabled(fn (Get $get): bool => (bool) $get('assign_to_all'))
-                            ->columnSpan(1),
-                        Select::make('assignment_target_units')
-                            ->label(__('الفروع'))
-                            ->options(fn (Get $get): array => app(DepartmentHierarchyService::class)->childOptionsGroupedByParent(
-                                parentIds: (array) ($get('assignment_target_departments') ?? []),
-                            ))
-                            ->multiple()
-                            ->searchable()
-                            ->preload()
-                            ->disabled(fn (Get $get): bool => (bool) $get('assign_to_all'))
-                            ->columnSpan(1),
-                        Select::make('assignment_target_users')
-                            ->label(__('موظفين محددين'))
-                            ->options(fn () => User::query()
-                                ->whereHas('roles', fn (Builder $q) => $q->whereIn('name', [
-                                    Rbac::EMPLOYEE,
-                                    Rbac::SUPERVISOR,
-                                ]))
-                                ->with('department.parent')
-                                ->orderBy('name')
-                                ->get()
-                                ->mapWithKeys(fn ($u) => [
-                                    $u->id => $u->name . ($u->department ? ' (' . $u->department->hierarchy_name . ')' : ''),
-                                ])
-                                ->all())
-                            ->multiple()
-                            ->searchable()
-                            ->preload()
-                            ->disabled(fn (Get $get): bool => (bool) $get('assign_to_all'))
-                            ->columnSpan(1),
-                    ])
-                    ->columns(3)
-                    ->description(__('اختر أقسام أو فروع أو موظفين محددين، أو فعّل "إسناد للكل" لإرسالها لجميع الموظفين.')),
-                Section::make('صاحب الطلب والمواعيد')
-                    ->components([
-                        Select::make('reported_by_user_id')
-                            ->label('صاحب الطلب')
-                            ->relationship(
-                                name: 'reportedByUser',
-                                titleAttribute: 'name',
-                                modifyQueryUsing: fn (Builder $query) => $query->whereHas('roles', fn (Builder $roleQuery) => $roleQuery->whereIn('name', [
-                                    Rbac::ADMIN,
-                                    Rbac::DISPATCHER,
-                                    Rbac::SUPERVISOR,
-                                    Rbac::EMPLOYEE,
-                                ])),
-                            )
-                            ->searchable()
-                            ->preload(),
-                        TextInput::make('reported_by_phone')
-                            ->label('هاتف المبلّغ')
-                            ->tel()
-                            ->maxLength(255),
                         DateTimePicker::make('due_at')
                             ->label('تاريخ الاستحقاق'),
-                        DateTimePicker::make('started_at')
-                            ->label('تاريخ البدء'),
-                        DateTimePicker::make('completed_at')
-                            ->label('تاريخ الإكمال'),
                     ])
                     ->columns(3),
+                Section::make('المرفقات')
+                    ->components([
+                        FileUpload::make('attachment_uploads')
+                            ->label('رفع مرفقات')
+                            ->multiple()
+                            ->storeFiles(false)
+                            ->maxSize(10 * 1024)
+                            ->acceptedFileTypes([
+                                'image/jpeg',
+                                'image/png',
+                                'image/webp',
+                                'application/pdf',
+                                'application/msword',
+                                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                                'application/vnd.ms-excel',
+                                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                                'text/plain',
+                            ])
+                            ->helperText('الحد الأقصى 10MB لكل ملف. الصيغ المدعومة: JPG, JPEG, PNG, WEBP, PDF, DOC, DOCX, XLS, XLSX, TXT.')
+                            ->columnSpanFull(),
+                        CheckboxList::make('remove_attachment_ids')
+                            ->label('إزالة مرفقات حالية')
+                            ->options(fn (?Task $record): array => $record?->attachments()
+                                ->orderByDesc('id')
+                                ->get()
+                                ->mapWithKeys(fn ($attachment): array => [
+                                    $attachment->id => ($attachment->original_name ?: basename($attachment->path))
+                                        .' ('.$attachment->humanSize().')',
+                                ])
+                                ->all() ?? [])
+                            ->visible(fn (?Task $record): bool => $record?->attachments()->exists() ?? false)
+                            ->columnSpanFull(),
+                    ]),
             ]);
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private static function internalUserOptions(): array
+    {
+        return User::query()
+            ->whereHas('roles', fn (Builder $query) => $query->whereIn('name', Rbac::ROLES))
+            ->with('department.parent')
+            ->orderBy('name')
+            ->get()
+            ->mapWithKeys(fn (User $user): array => [
+                $user->id => $user->name.($user->department ? ' ('.$user->department->hierarchy_name.')' : ''),
+            ])
+            ->all();
     }
 }

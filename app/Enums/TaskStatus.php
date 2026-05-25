@@ -64,17 +64,7 @@ enum TaskStatus: string
 
     public static function formOptions(): array
     {
-        $visible = [
-            self::NEW,
-            self::PENDING_ASSIGNMENT,
-            self::IN_PROGRESS,
-            self::AWAITING_REPORTER_CONFIRMATION,
-            self::COMPLETED,
-            self::REOPENED,
-            self::CANCELLED,
-        ];
-
-        return collect($visible)
+        return collect(self::cases())
             ->mapWithKeys(fn (self $case): array => [$case->value => $case->label()])
             ->all();
     }

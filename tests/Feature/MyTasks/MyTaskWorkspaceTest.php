@@ -44,8 +44,8 @@ class MyTaskWorkspaceTest extends TestCase
         $this->actingAs($employee)
             ->get(route('my-tasks.index'))
             ->assertOk()
-            ->assertSee($myTask->task_number)
-            ->assertDontSee($otherTask->task_number);
+            ->assertSee($myTask->displayNumber())
+            ->assertDontSee($otherTask->displayNumber());
     }
 
     public function test_employee_cannot_open_task_assigned_to_another_employee(): void

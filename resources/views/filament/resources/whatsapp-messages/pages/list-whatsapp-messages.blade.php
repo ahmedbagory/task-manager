@@ -393,14 +393,14 @@
                                                         href="{{ $this->taskUrlForMessage($message) }}"
                                                         class="inline-flex items-center rounded-full bg-success-100 px-2 py-0.5 text-[10px] font-medium text-success-700 dark:bg-success-500/15 dark:text-success-200"
                                                     >
-                                                        {{ __('Task #:number', ['number' => $message->task->task_number]) }}
+                                                        {{ 'فتح المهمة '.$message->task->displayNumber() }}
                                                     </a>
                                                 @else
                                                     <a
                                                         href="{{ $this->taskUrlForMessage($message) }}"
                                                         class="inline-flex items-center rounded-full border border-gray-200 px-2 py-0.5 text-[10px] font-medium text-gray-700 transition hover:border-primary-300 hover:text-primary-700 dark:border-white/10 dark:text-gray-200 dark:hover:text-primary-200"
                                                     >
-                                                        {{ __('Convert to Task') }}
+                                                        {{ 'تحويل لمهمة' }}
                                                     </a>
                                                 @endif
 

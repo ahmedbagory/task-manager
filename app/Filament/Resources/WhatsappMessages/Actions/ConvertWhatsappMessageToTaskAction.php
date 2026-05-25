@@ -56,6 +56,7 @@ class ConvertWhatsappMessageToTaskAction
                     'title' => str((string) ($record->body ?: __('WhatsApp issue report')))->limit(100)->toString(),
                     'description' => $record->body,
                     'priority' => 'medium',
+                    'reported_by_user_id' => $routingContact?->user_id,
                     'department_id' => $routingContact?->department_id,
                     'location' => $routingContact?->default_location,
                 ];
@@ -75,14 +76,14 @@ class ConvertWhatsappMessageToTaskAction
                     );
 
                     Notification::make()
-                        ->title(__('Task :task_number created from WhatsApp message.', ['task_number' => $task->task_number]))
+                        ->title(__('Task :task_number created from WhatsApp message.', ['task_number' => $task->displayNumber()]))
                         ->success()
                         ->send();
 
                     $livewire->redirect(TaskResource::getUrl('view', ['record' => $task]), navigate: true);
                 } catch (WhatsAppMessageAlreadyConvertedException $exception) {
                     Notification::make()
-                        ->title(__('This message is already linked to task :task_number.', ['task_number' => $exception->task->task_number]))
+                        ->title(__('This message is already linked to task :task_number.', ['task_number' => $exception->task->displayNumber()]))
                         ->warning()
                         ->send();
 

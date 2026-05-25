@@ -2,15 +2,13 @@
 
 namespace App\Services\WhatsApp;
 
-use App\Enums\TaskStatus;
 use App\Exceptions\WhatsAppMessageAlreadyConvertedException;
 use App\Models\Task;
 use App\Models\User;
 use App\Models\WhatsappContact;
 use App\Models\WhatsappMessage;
 use App\Services\Notifications\TaskWorkflowNotificationService;
-use App\Services\Tasks\TaskAssignmentTargetResolver;
-use App\Services\Tasks\TaskAssignmentService;
+use App\Services\Tasks\TaskAttachmentService;
 use App\Services\Tasks\TaskService;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
@@ -20,8 +18,7 @@ class WhatsAppInboxService
 {
     public function __construct(
         private readonly TaskService $taskService,
-        private readonly TaskAssignmentService $taskAssignmentService,
-        private readonly TaskAssignmentTargetResolver $taskAssignmentTargetResolver,
+        private readonly TaskAttachmentService $taskAttachmentService,
         private readonly TaskWorkflowNotificationService $taskWorkflowNotificationService,
     ) {}
 
@@ -48,26 +45,7 @@ class WhatsAppInboxService
                 actor: $actor,
             );
 
-            $directAssigneeId = Arr::get($data, 'assigned_to_user_id');
-            $hasTargets = ! empty($data['assign_to_all'])
-                || ! empty($data['assignment_target_departments'])
-                || ! empty($data['assignment_target_units'])
-                || ! empty($data['assignment_target_users']);
-
-            if (filled($directAssigneeId)) {
-                $this->taskAssignmentService->assignTask(
-                    task: $task,
-                    assignedToUserId: (int) $directAssigneeId,
-                    assignedBy: $actor,
-                );
-            } elseif ($hasTargets) {
-                $this->taskAssignmentTargetResolver->syncTargets($task, [
-                    'all' => ! empty($data['assign_to_all']),
-                    'departments' => array_map('intval', (array) ($data['assignment_target_departments'] ?? [])),
-                    'units' => array_map('intval', (array) ($data['assignment_target_units'] ?? [])),
-                    'users' => array_map('intval', (array) ($data['assignment_target_users'] ?? [])),
-                ], $actor, 'new_assignment');
-            }
+            $this->taskAttachmentService->copyFromWhatsappMessage($task, $lockedMessage, $actor);
 
             return $task->fresh();
         });
@@ -123,12 +101,16 @@ class WhatsAppInboxService
             'description' => $description !== '' ? $description : null,
             'department_id' => filled($selectedDepartmentId) ? $selectedDepartmentId : $contactDepartmentId,
             'category_id' => Arr::get($data, 'category_id'),
-            'reported_by_user_id' => Arr::get($data, 'reported_by_user_id', $routingContact?->user_id),
+            'reported_by_user_id' => Arr::get(
+                $data,
+                'reported_by_user_id',
+                $routingContact?->user_id ?: $this->resolveMatchedUserId($resolvedReporterPhone),
+            ),
             'whatsapp_contact_id' => $routingContact?->id ?? $message->contact_id,
             'priority' => Arr::get($data, 'priority'),
             'location' => filled($selectedLocation) ? $selectedLocation : $contactLocation,
             'due_at' => Arr::get($data, 'due_at'),
-            'status' => TaskStatus::PENDING_ASSIGNMENT->value,
+            'assignee_ids' => array_map('intval', (array) Arr::get($data, 'assignee_ids', [])),
             'reported_by_phone' => $resolvedReporterPhone,
         ];
     }
@@ -178,5 +160,23 @@ class WhatsAppInboxService
         $normalized = ltrim(trim($beforeAt), '+');
 
         return $normalized === '' ? null : $normalized;
+    }
+
+    private function resolveMatchedUserId(?string $phone): ?int
+    {
+        $normalized = preg_replace('/\D+/', '', (string) $phone);
+
+        if (! filled($normalized)) {
+            return null;
+        }
+
+        return User::query()
+            ->where(function ($query) use ($normalized): void {
+                $query
+                    ->where('phone', $normalized)
+                    ->orWhere('phone', '+'.$normalized)
+                    ->orWhereRaw("REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?", [$normalized]);
+            })
+            ->value('id');
     }
 }

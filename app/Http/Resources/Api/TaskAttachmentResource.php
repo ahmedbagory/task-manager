@@ -14,8 +14,12 @@ class TaskAttachmentResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        $name = $this->original_name ?: basename((string) $this->path);
+
         return [
             'id' => $this->id,
+            'name' => $name,
+            'filename' => basename((string) $this->path),
             'original_name' => $this->original_name,
             'mime_type' => $this->mime_type,
             'size' => $this->size,

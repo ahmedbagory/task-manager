@@ -94,7 +94,9 @@ class TaskResource extends Resource
         $query = parent::getEloquentQuery()->with([
             'reportedByUser',
             'whatsappContact.user',
+            'createdByUser',
             'assignedToUser.department.parent',
+            'latestAssignment.assignedByUser',
             'assignments.assignedToUser.department.parent',
             'assignmentTargets',
         ]);

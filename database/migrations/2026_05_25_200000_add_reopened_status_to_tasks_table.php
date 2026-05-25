@@ -21,6 +21,10 @@ return new class extends Migration
 
     private function syncTaskStatusEnum(array $values): void
     {
+        if (DB::connection()->getDriverName() !== 'mysql') {
+            return;
+        }
+
         $quotedValues = implode(',', array_map(
             fn (string $value): string => "'{$value}'",
             $values,

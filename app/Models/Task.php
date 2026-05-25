@@ -94,6 +94,7 @@ class Task extends Model
             : TaskStatus::from((string) $this->status);
 
         if (in_array($status, [
+            TaskStatus::NEW,
             TaskStatus::ACCEPTED,
             TaskStatus::IN_PROGRESS,
             TaskStatus::WAIT_RESPONSE,
@@ -228,6 +229,6 @@ class Task extends Model
 
     public function displayNumber(): string
     {
-        return 'MHM-'.str_pad((string) $this->id, 5, '0', STR_PAD_LEFT);
+        return 'T-'.str_pad((string) $this->id, 6, '0', STR_PAD_LEFT);
     }
 }

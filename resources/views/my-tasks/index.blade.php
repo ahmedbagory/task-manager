@@ -51,7 +51,7 @@
             <article class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
                 <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div class="min-w-0">
-                        <p class="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">{{ $task->task_number }}</p>
+                        <p class="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">{{ $task->displayNumber() }}</p>
                         <h2 class="mt-1 text-base font-semibold text-slate-900 sm:text-lg">{{ $task->title }}</h2>
                         <p class="mt-2 text-sm text-slate-600">
                             {{ $task->description ? str($task->description)->limit(160) : __('No description provided.') }}

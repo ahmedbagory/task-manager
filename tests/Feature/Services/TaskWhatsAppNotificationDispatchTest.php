@@ -28,6 +28,8 @@ class TaskWhatsAppNotificationDispatchTest extends TestCase
             'direction' => 'inbound',
             'from_phone' => '+201000000100',
             'body' => 'Issue reported from WhatsApp',
+            'message_type' => 'text',
+            'media_url' => null,
         ]);
 
         $task = app(TaskService::class)->createTaskFromWhatsAppMessage($message, [], $actor);
@@ -35,7 +37,7 @@ class TaskWhatsAppNotificationDispatchTest extends TestCase
         Queue::assertPushed(SendWhatsAppTextMessageJob::class, function (SendWhatsAppTextMessageJob $job) use ($task): bool {
             return $job->taskId === $task->id
                 && $job->phone === '+201000000100'
-                && str_contains($job->message, $task->task_number)
+                && str_contains($job->message, $task->displayNumber())
                 && str_contains($job->message, 'تم تسجيل بلاغك رقم');
         });
     }
@@ -59,7 +61,7 @@ class TaskWhatsAppNotificationDispatchTest extends TestCase
         Queue::assertPushed(SendWhatsAppTextMessageJob::class, function (SendWhatsAppTextMessageJob $job) use ($task): bool {
             return $job->taskId === $task->id
                 && $job->phone === '+201000000101'
-                && str_contains($job->message, $task->task_number)
+                && str_contains($job->message, $task->displayNumber())
                 && str_contains($job->message, 'تم تحويل البلاغ رقم');
         });
     }
@@ -70,22 +72,26 @@ class TaskWhatsAppNotificationDispatchTest extends TestCase
 
         $dispatcher = User::factory()->create();
         $employee = User::factory()->create();
+        $reporter = User::factory()->create();
 
         $task = Task::factory()->create([
             'source' => TaskSource::WHATSAPP->value,
             'status' => TaskStatus::PENDING_ASSIGNMENT->value,
             'reported_by_phone' => '+201000000102',
+            'reported_by_user_id' => $reporter->id,
             'assigned_to_user_id' => null,
         ]);
 
         $assignment = app(TaskAssignmentService::class)->assignTask($task, $employee->id, $dispatcher, 'Assign and complete');
-
+        app(TaskAssignmentService::class)->acceptAssignment($assignment, $employee);
+        app(TaskAssignmentService::class)->startTask($assignment, $employee);
         app(TaskAssignmentService::class)->completeAssignedTask($assignment, $employee);
+        app(TaskAssignmentService::class)->confirmResolution($task->fresh(), $reporter);
 
         Queue::assertPushed(SendWhatsAppTextMessageJob::class, function (SendWhatsAppTextMessageJob $job) use ($task): bool {
             return $job->taskId === $task->id
                 && $job->phone === '+201000000102'
-                && str_contains($job->message, $task->task_number)
+                && str_contains($job->message, $task->displayNumber())
                 && str_contains($job->message, 'تم إغلاق البلاغ رقم');
         });
     }

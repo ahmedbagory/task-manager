@@ -387,8 +387,9 @@ class ViewTask extends ViewRecord
                         'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
                         'application/vnd.ms-excel',
                         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                        'text/plain',
                     ])
-                    ->helperText(__('الحد الأقصى 10MB. الصيغ المدعومة: JPG, PNG, WEBP, PDF, DOC, DOCX, XLS, XLSX.')),
+                    ->helperText(__('الحد الأقصى 10MB. الصيغ المدعومة: JPG, PNG, WEBP, PDF, DOC, DOCX, XLS, XLSX, TXT.')),
             ])
             ->action(function (array $data): void {
                 /** @var User $actor */

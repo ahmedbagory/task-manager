@@ -2,14 +2,15 @@
 
 namespace App\Filament\Resources\WhatsappMessages\Tables;
 
-use App\Support\BidiText;
 use App\Enums\WhatsappMessageDirection;
 use App\Filament\Resources\WhatsappMessages\Actions\ConvertWhatsappMessageToTaskAction;
 use App\Models\WhatsappMessage;
+use App\Support\BidiText;
 use Filament\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class WhatsappMessagesTable
 {
@@ -18,40 +19,54 @@ class WhatsappMessagesTable
         return $table
             ->columns([
                 TextColumn::make('created_at')
-                    ->label(__('Received At'))
+                    ->label('تاريخ الاستلام')
                     ->dateTime()
-                    ->sortable(),
+                    ->sortable()
+                    ->toggleable(),
                 TextColumn::make('direction')
-                    ->label(__('Direction'))
+                    ->label('الاتجاه')
                     ->badge()
+                    ->toggleable()
                     ->formatStateUsing(fn (WhatsappMessageDirection|string $state): string => ($state instanceof WhatsappMessageDirection ? $state : WhatsappMessageDirection::from((string) $state))->label())
                     ->color(fn (WhatsappMessageDirection|string $state): string => ($state instanceof WhatsappMessageDirection ? $state : WhatsappMessageDirection::from((string) $state))->color()),
                 TextColumn::make('contact.phone')
-                    ->label(__('Contact Phone'))
+                    ->label('رقم الهاتف')
                     ->state(fn (WhatsappMessage $record): ?string => $record->contact?->phone ?? $record->from_phone ?? $record->to_phone)
                     ->formatStateUsing(fn (?string $state) => BidiText::ltr($state))
                     ->html()
-                    ->searchable()
+                    ->searchable(query: function (Builder $query, string $search): void {
+                        $query->whereHas('contact', fn (Builder $q) => $q->where('phone', 'like', "%{$search}%"))
+                            ->orWhere('from_phone', 'like', "%{$search}%")
+                            ->orWhere('to_phone', 'like', "%{$search}%");
+                    })
+                    ->toggleable()
                     ->placeholder('-'),
                 TextColumn::make('contact.name')
-                    ->label(__('Contact Name'))
+                    ->label('اسم جهة الاتصال')
                     ->state(fn (WhatsappMessage $record): ?string => $record->contact?->name)
                     ->formatStateUsing(fn (?string $state) => BidiText::auto($state))
                     ->html()
-                    ->searchable()
+                    ->searchable(query: function (Builder $query, string $search): void {
+                        $query->whereHas('contact', fn (Builder $q) => $q->where('name', 'like', "%{$search}%"));
+                    })
+                    ->toggleable()
                     ->placeholder('-'),
                 TextColumn::make('body')
-                    ->label(__('Message Body'))
+                    ->label('نص الرسالة')
                     ->limit(80)
                     ->searchable()
+                    ->toggleable()
                     ->placeholder('-'),
-                TextColumn::make('task.task_number')
-                    ->label(__('Task #'))
+                TextColumn::make('task.id')
+                    ->label('رقم المهمة')
+                    ->formatStateUsing(fn ($state, WhatsappMessage $record): string => $record->task?->displayNumber() ?? '-')
                     ->placeholder('-')
+                    ->toggleable()
                     ->searchable(),
                 TextColumn::make('status')
-                    ->label(__('Status'))
+                    ->label('الحالة')
                     ->badge()
+                    ->toggleable()
                     ->color(fn (?string $state): string => match ($state) {
                         'sent', 'delivered', 'read' => 'success',
                         'received' => 'info',
@@ -62,32 +77,32 @@ class WhatsappMessagesTable
                     })
                     ->placeholder('-'),
                 TextColumn::make('message_type')
-                    ->label(__('Message Type'))
+                    ->label('نوع الرسالة')
                     ->placeholder('-')
                     ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('from_phone')
-                    ->label(__('From Phone'))
+                    ->label('من رقم')
                     ->formatStateUsing(fn (?string $state) => BidiText::ltr($state))
                     ->html()
                     ->searchable()
                     ->toggleable(isToggledHiddenByDefault: true)
                     ->placeholder('-'),
                 TextColumn::make('to_phone')
-                    ->label(__('To Phone'))
+                    ->label('إلى رقم')
                     ->formatStateUsing(fn (?string $state) => BidiText::ltr($state))
                     ->html()
                     ->searchable()
                     ->toggleable(isToggledHiddenByDefault: true)
                     ->placeholder('-'),
                 TextColumn::make('group_name')
-                    ->label(__('Group Name'))
+                    ->label('اسم المجموعة')
                     ->formatStateUsing(fn (?string $state) => BidiText::auto($state))
                     ->html()
                     ->searchable()
                     ->toggleable(isToggledHiddenByDefault: true)
                     ->placeholder('-'),
                 TextColumn::make('group_id')
-                    ->label(__('Group ID'))
+                    ->label('معرّف المجموعة')
                     ->formatStateUsing(fn (?string $state) => BidiText::ltr($state))
                     ->html()
                     ->searchable()
@@ -96,21 +111,24 @@ class WhatsappMessagesTable
             ])
             ->filters([
                 SelectFilter::make('direction')
+                    ->label('الاتجاه')
                     ->options(WhatsappMessageDirection::options()),
                 SelectFilter::make('status')
-                    ->options(fn (): array => [
-                        'received' => __('Received'),
-                        'sent' => __('Sent'),
-                        'delivered' => __('Delivered'),
-                        'read' => __('Read'),
-                        'failed' => __('Failed'),
+                    ->label('الحالة')
+                    ->options([
+                        'received' => 'مستلمة',
+                        'sent' => 'مرسلة',
+                        'delivered' => 'تم التسليم',
+                        'read' => 'مقروءة',
+                        'failed' => 'فشلت',
                     ]),
                 SelectFilter::make('message_type')
-                    ->options(fn (): array => [
-                        'text' => __('Text'),
-                        'image' => __('Image'),
-                        'audio' => __('Audio'),
-                        'document' => __('Document'),
+                    ->label('نوع الرسالة')
+                    ->options([
+                        'text' => 'نص',
+                        'image' => 'صورة',
+                        'audio' => 'صوت',
+                        'document' => 'مستند',
                     ]),
             ])
             ->defaultSort('created_at', 'desc')

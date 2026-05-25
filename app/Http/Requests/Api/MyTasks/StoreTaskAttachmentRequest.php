@@ -20,7 +20,7 @@ class StoreTaskAttachmentRequest extends ApiFormRequest
         return [
             'attachment' => [
                 'required',
-                File::types(['jpg', 'jpeg', 'png', 'webp', 'pdf', 'doc', 'docx', 'xls', 'xlsx'])
+                File::types(['jpg', 'jpeg', 'png', 'webp', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt'])
                     ->max(10 * 1024),
             ],
         ];

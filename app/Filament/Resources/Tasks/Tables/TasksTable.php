@@ -34,24 +34,31 @@ class TasksTable
                     ->sortable()
                     ->copyable(),
                 TextColumn::make('title')
-                    ->label('العنوان')
+                    ->label('عنوان المهمة')
                     ->searchable()
                     ->sortable()
                     ->limit(40),
                 TextColumn::make('status')
+                    ->label('الحالة')
                     ->badge()
+                    ->toggleable()
                     ->formatStateUsing(fn ($state, Task $record): string => $record->workflowStatusLabel())
                     ->color(fn ($state, Task $record): string => $record->workflowStatus()->color()),
                 TextColumn::make('priority')
+                    ->label('الأولوية')
                     ->badge()
+                    ->toggleable()
                     ->formatStateUsing(fn (TaskPriority|string $state): string => ($state instanceof TaskPriority ? $state : TaskPriority::from((string) $state))->label())
                     ->color(fn (TaskPriority|string $state): string => ($state instanceof TaskPriority ? $state : TaskPriority::from((string) $state))->color()),
                 TextColumn::make('source')
+                    ->label('المصدر')
                     ->badge()
+                    ->toggleable()
                     ->formatStateUsing(fn (TaskSource|string $state): string => ($state instanceof TaskSource ? $state : TaskSource::from((string) $state))->label())
                     ->color(fn (TaskSource|string $state): string => ($state instanceof TaskSource ? $state : TaskSource::from((string) $state))->color()),
                 TextColumn::make('department.hierarchy_name')
                     ->label('القسم / الوحدة')
+                    ->toggleable()
                     ->placeholder('-'),
                 TextColumn::make('assignees_summary')
                     ->label('المكلفين')
@@ -59,7 +66,12 @@ class TasksTable
                         ->resolveAssignees($record)
                         ->pluck('name')
                         ->implode('، ') ?: '—')
+                    ->searchable(query: function (Builder $query, string $search): void {
+                        $query->whereHas('assignedToUser', fn (Builder $q) => $q->where('name', 'like', "%{$search}%"))
+                            ->orWhereHas('assignments.assignedToUser', fn (Builder $q) => $q->where('name', 'like', "%{$search}%"));
+                    })
                     ->wrap()
+                    ->toggleable()
                     ->placeholder('-'),
                 TextColumn::make('reporter_summary')
                     ->label('صاحب الطلب')
@@ -75,12 +87,26 @@ class TasksTable
 
                         return trim(implode(' - ', array_filter([$name, $phone]))) ?: '—';
                     })
+                    ->searchable(query: function (Builder $query, string $search): void {
+                        $query->whereHas('reportedByUser', fn (Builder $q) => $q->where('name', 'like', "%{$search}%"))
+                            ->orWhereHas('whatsappContact', fn (Builder $q) => $q->where('name', 'like', "%{$search}%")->orWhere('phone', 'like', "%{$search}%"))
+                            ->orWhere('reported_by_phone', 'like', "%{$search}%");
+                    })
                     ->wrap()
+                    ->toggleable()
+                    ->placeholder('-'),
+                TextColumn::make('assigned_by_summary')
+                    ->label('تم الإسناد بواسطة')
+                    ->state(fn (Task $record): string => $record->latestAssignment?->assignedByUser?->name
+                        ?: $record->createdByUser?->name
+                        ?: '—')
+                    ->toggleable(isToggledHiddenByDefault: true)
                     ->placeholder('-'),
                 TextColumn::make('due_at')
                     ->label('تاريخ الاستحقاق')
                     ->dateTime()
                     ->sortable()
+                    ->toggleable()
                     ->placeholder('-'),
                 TextColumn::make('description')
                     ->label('الوصف')
@@ -111,10 +137,13 @@ class TasksTable
             ])
             ->filters([
                 SelectFilter::make('status')
+                    ->label('الحالة')
                     ->options(TaskStatus::options()),
                 SelectFilter::make('priority')
+                    ->label('الأولوية')
                     ->options(TaskPriority::options()),
                 SelectFilter::make('source')
+                    ->label('المصدر')
                     ->options(TaskSource::options()),
                 SelectFilter::make('department_id')
                     ->label('القسم / الوحدة')

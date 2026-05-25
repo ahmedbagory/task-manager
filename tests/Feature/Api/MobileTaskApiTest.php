@@ -239,11 +239,11 @@ class MobileTaskApiTest extends TestCase
 
         $this->postJson("/api/mobile/my-tasks/{$task->id}/accept")
             ->assertOk()
-            ->assertJsonPath('data.task.status.value', TaskStatus::ACCEPTED->value);
+            ->assertJsonPath('data.task.status', TaskStatus::ACCEPTED->value);
 
         $this->postJson("/api/mobile/my-tasks/{$task->id}/start")
             ->assertOk()
-            ->assertJsonPath('data.task.status.value', TaskStatus::IN_PROGRESS->value);
+            ->assertJsonPath('data.task.status', TaskStatus::IN_PROGRESS->value);
 
         $this->postJson("/api/mobile/my-tasks/{$task->id}/comment", [
             'comment' => 'Work started and inspection in progress.',
@@ -266,7 +266,7 @@ class MobileTaskApiTest extends TestCase
 
         $this->postJson("/api/mobile/my-tasks/{$task->id}/complete")
             ->assertOk()
-            ->assertJsonPath('data.task.status.value', TaskStatus::AWAITING_REPORTER_CONFIRMATION->value);
+            ->assertJsonPath('data.task.status', TaskStatus::AWAITING_REPORTER_CONFIRMATION->value);
 
         $this->assertSame(
             TaskAssignmentStatus::COMPLETED,
@@ -308,7 +308,8 @@ class MobileTaskApiTest extends TestCase
 
         $this->getJson("/api/mobile/my-tasks/{$task->id}")
             ->assertOk()
-            ->assertJsonPath('data.task.current_user_role_on_task', 'reporter')
+            ->assertJsonPath('data.task.current_user_role_on_task', 'requester')
+            ->assertJsonPath('data.task.requester.id', $reporter->id)
             ->assertJsonPath('data.task.allowed_actions.can_confirm_resolution', true)
             ->assertJsonPath('data.task.allowed_actions.can_reject_resolution', true)
             ->assertJsonPath('data.task.allowed_actions.can_mark_resolved', false);
@@ -317,7 +318,7 @@ class MobileTaskApiTest extends TestCase
             'comment' => 'المشكلة ما زالت قائمة.',
         ])
             ->assertOk()
-            ->assertJsonPath('data.task.status.value', TaskStatus::IN_PROGRESS->value);
+            ->assertJsonPath('data.task.status', TaskStatus::REOPENED->value);
 
         $this->assertSame(
             TaskAssignmentStatus::ACCEPTED,
@@ -331,7 +332,7 @@ class MobileTaskApiTest extends TestCase
 
         $this->postJson("/api/mobile/my-tasks/{$task->id}/confirm-resolution")
             ->assertOk()
-            ->assertJsonPath('data.task.status.value', TaskStatus::COMPLETED->value);
+            ->assertJsonPath('data.task.status', TaskStatus::COMPLETED->value);
     }
 
     public function test_reject_requires_reason_and_updates_task_status_to_pending_assignment(): void
@@ -364,7 +365,7 @@ class MobileTaskApiTest extends TestCase
             'reason' => 'Requires a specialist from another team.',
         ])
             ->assertOk()
-            ->assertJsonPath('data.task.status.value', TaskStatus::PENDING_ASSIGNMENT->value);
+            ->assertJsonPath('data.task.status', TaskStatus::PENDING_ASSIGNMENT->value);
 
         $task->refresh();
 
@@ -403,7 +404,7 @@ class MobileTaskApiTest extends TestCase
         $this->getJson('/api/mobile/my-tasks')
             ->assertOk()
             ->assertJsonPath('data.tasks.0.id', $task->id)
-            ->assertJsonPath('data.tasks.0.status.value', TaskStatus::ASSIGNED->value)
+            ->assertJsonPath('data.tasks.0.status', TaskStatus::ASSIGNED->value)
             ->assertJsonPath('data.tasks.0.my_assignment.status', TaskStatus::ASSIGNED->value)
             ->assertJsonPath('data.tasks.0.my_assignment.can_accept', true);
     }

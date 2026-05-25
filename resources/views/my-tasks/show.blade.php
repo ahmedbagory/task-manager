@@ -1,4 +1,4 @@
-<x-layouts.my-tasks :title="$task->task_number">
+<x-layouts.my-tasks :title="$task->displayNumber()">
     @php
         $workflowStatus = $task->workflowStatus();
 
@@ -41,7 +41,7 @@
     <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
-                <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{{ $task->task_number }}</p>
+                <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{{ $task->displayNumber() }}</p>
                 <h2 class="mt-1 text-xl font-semibold text-slate-900">{{ $task->title }}</h2>
             </div>
 

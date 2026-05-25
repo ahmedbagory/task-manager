@@ -9,12 +9,14 @@ use App\Filament\Resources\WhatsappMessages\WhatsappMessageResource;
 use App\Models\TaskCategory;
 use App\Models\User;
 use App\Models\WhatsappMessage;
+use App\Services\Tasks\TaskAttachmentService;
 use App\Services\Tasks\TaskService;
 use App\Services\WhatsApp\WhatsAppInboxService;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Str;
 
 class CreateTask extends CreateRecord
@@ -41,7 +43,7 @@ class CreateTask extends CreateRecord
 
         if ($message->task) {
             Notification::make()
-                ->title(__('This WhatsApp message is already linked to task :task.', ['task' => $message->task->task_number]))
+                ->title(__('This WhatsApp message is already linked to task :task.', ['task' => $message->task->displayNumber()]))
                 ->warning()
                 ->send();
 
@@ -58,17 +60,40 @@ class CreateTask extends CreateRecord
     {
         /** @var User $user */
         $user = auth()->user();
+        $attachments = collect((array) ($data['attachment_uploads'] ?? []))
+            ->filter(fn ($file): bool => $file instanceof UploadedFile)
+            ->values();
+
+        unset($data['attachment_uploads'], $data['remove_attachment_ids']);
 
         if ($this->sourceWhatsappMessage) {
-            return app(WhatsAppInboxService::class)->convertMessageToTask($this->sourceWhatsappMessage, $data, $user);
+            $task = app(WhatsAppInboxService::class)->convertMessageToTask($this->sourceWhatsappMessage, $data, $user);
+        } else {
+            $task = app(TaskService::class)->createManualTask($data, $user);
         }
 
-        return app(TaskService::class)->createManualTask($data, $user);
+        if ($attachments->isNotEmpty()) {
+            app(TaskAttachmentService::class)->storeUploadedAttachments($task, $attachments->all(), $user);
+        }
+
+        return $task->fresh();
     }
 
     protected function getRedirectUrl(): string
     {
         return TaskResource::getUrl('view', ['record' => $this->record]);
+    }
+
+    public function getTitle(): string
+    {
+        return 'إنشاء مهمة';
+    }
+
+    protected function getCreatedNotificationTitle(): ?string
+    {
+        return $this->record
+            ? 'تم إنشاء المهمة '.$this->record->displayNumber()
+            : 'تم إنشاء المهمة بنجاح';
     }
 
     /**
@@ -103,6 +128,7 @@ class CreateTask extends CreateRecord
             'department_id' => $message->contact?->department_id,
             'category_id' => $this->resolveDefaultCategoryId(),
             'location' => $message->contact?->default_location,
+            'reported_by_user_id' => $message->contact?->user_id ?: $this->resolveMatchedRequesterUserId($phone),
             'reported_by_phone' => $phone,
         ];
     }
@@ -119,6 +145,24 @@ class CreateTask extends CreateRecord
                     ->orWhere('name', 'like', '%Customer%');
             })
             ->orderBy('name')
+            ->value('id');
+    }
+
+    private function resolveMatchedRequesterUserId(?string $phone): ?int
+    {
+        $normalized = preg_replace('/\D+/', '', (string) $phone);
+
+        if (! filled($normalized)) {
+            return null;
+        }
+
+        return User::query()
+            ->where(function (Builder $query) use ($normalized): void {
+                $query
+                    ->where('phone', $normalized)
+                    ->orWhere('phone', '+'.$normalized)
+                    ->orWhereRaw("REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?", [$normalized]);
+            })
             ->value('id');
     }
 }

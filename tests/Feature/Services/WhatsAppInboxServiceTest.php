@@ -18,6 +18,7 @@ use App\Services\WhatsApp\WhatsAppInboxService;
 use App\Support\Rbac;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class WhatsAppInboxServiceTest extends TestCase
@@ -42,6 +43,13 @@ class WhatsAppInboxServiceTest extends TestCase
             'direction' => 'inbound',
             'from_phone' => '+201000000001',
             'body' => 'Water leakage in storage room.',
+            'message_type' => 'text',
+            'media_url' => null,
+            'media_type' => null,
+            'media_mime' => null,
+            'media_path' => null,
+            'media_name' => null,
+            'media_size' => null,
         ]);
 
         $task = app(WhatsAppInboxService::class)->convertMessageToTask($message, [
@@ -52,11 +60,10 @@ class WhatsAppInboxServiceTest extends TestCase
             'priority' => 'high',
             'location' => 'Building B - Storage',
             'due_at' => now()->addHours(12),
-            'assigned_to_user_id' => null,
         ], $dispatcher);
 
         $this->assertSame(TaskSource::WHATSAPP, $task->source);
-        $this->assertSame(TaskStatus::PENDING_ASSIGNMENT, $task->status);
+        $this->assertSame(TaskStatus::NEW, $task->status);
         $this->assertSame('+201000000001', $task->reported_by_phone);
         $this->assertSame($task->id, $message->fresh()->task_id);
         $this->assertStringContainsString('Water leakage in storage room.', (string) $task->description);
@@ -78,12 +85,19 @@ class WhatsAppInboxServiceTest extends TestCase
             'direction' => 'inbound',
             'from_phone' => '+201000000002',
             'body' => 'Electrical short circuit in office 4.',
+            'message_type' => 'text',
+            'media_url' => null,
+            'media_type' => null,
+            'media_mime' => null,
+            'media_path' => null,
+            'media_name' => null,
+            'media_size' => null,
         ]);
 
         $task = app(WhatsAppInboxService::class)->convertMessageToTask($message, [
             'title' => 'Office 4 short circuit',
             'priority' => 'urgent',
-            'assigned_to_user_id' => $employee->id,
+            'assignee_ids' => [$employee->id],
         ], $dispatcher);
 
         $assignment = TaskAssignment::query()->where('task_id', $task->id)->first();
@@ -92,7 +106,44 @@ class WhatsAppInboxServiceTest extends TestCase
         $this->assertSame(TaskAssignmentStatus::ASSIGNED, $assignment->status);
         $this->assertSame($employee->id, $assignment->assigned_to_user_id);
         $this->assertSame(TaskStatus::ASSIGNED, $task->fresh()->status);
-        $this->assertSame($employee->id, $task->fresh()->assigned_to_user_id);
+        $this->assertNull($task->fresh()->assigned_to_user_id);
+    }
+
+    public function test_convert_message_to_task_copies_whatsapp_media_into_task_attachments(): void
+    {
+        app(RbacInitializationService::class)->seed();
+        Storage::fake('public');
+        Storage::fake('local');
+
+        $dispatcher = User::factory()->create();
+        $dispatcher->assignRole(Rbac::DISPATCHER);
+
+        Storage::disk('public')->put('whatsapp-media/images/sample-proof.jpg', 'image-bytes');
+
+        $message = WhatsappMessage::factory()->create([
+            'task_id' => null,
+            'direction' => 'inbound',
+            'from_phone' => '+201000000099',
+            'body' => 'Attached photo of the damaged AC.',
+            'media_type' => 'image',
+            'media_mime' => 'image/jpeg',
+            'media_name' => 'damaged-ac.jpg',
+            'media_size' => 11,
+            'media_path' => 'storage/app/public/whatsapp-media/images/sample-proof.jpg',
+        ]);
+
+        $task = app(WhatsAppInboxService::class)->convertMessageToTask($message, [
+            'title' => 'Damaged AC from WhatsApp',
+            'priority' => 'high',
+        ], $dispatcher);
+
+        $attachment = $task->fresh()->attachments()->first();
+
+        $this->assertNotNull($attachment);
+        $this->assertSame('damaged-ac.jpg', $attachment->original_name);
+        $this->assertSame('image/jpeg', $attachment->mime_type);
+        $this->assertSame(11, $attachment->size);
+        Storage::disk('local')->assertExists($attachment->path);
     }
 
     public function test_convert_message_to_task_prevents_duplicate_conversion(): void
@@ -107,6 +158,13 @@ class WhatsAppInboxServiceTest extends TestCase
             'direction' => 'inbound',
             'from_phone' => '+201000000003',
             'body' => 'Broken window in hallway.',
+            'message_type' => 'text',
+            'media_url' => null,
+            'media_type' => null,
+            'media_mime' => null,
+            'media_path' => null,
+            'media_name' => null,
+            'media_size' => null,
         ]);
 
         $task = app(WhatsAppInboxService::class)->convertMessageToTask($message, [
@@ -139,6 +197,13 @@ class WhatsAppInboxServiceTest extends TestCase
             'direction' => 'inbound',
             'from_phone' => '+201000000004',
             'body' => 'Lighting issue in meeting room.',
+            'message_type' => 'text',
+            'media_url' => null,
+            'media_type' => null,
+            'media_mime' => null,
+            'media_path' => null,
+            'media_name' => null,
+            'media_size' => null,
         ]);
 
         $this->expectException(AuthorizationException::class);
@@ -169,6 +234,13 @@ class WhatsAppInboxServiceTest extends TestCase
             'direction' => 'inbound',
             'from_phone' => '201555960069',
             'body' => 'Air conditioner issue in location.',
+            'message_type' => 'text',
+            'media_url' => null,
+            'media_type' => null,
+            'media_mime' => null,
+            'media_path' => null,
+            'media_name' => null,
+            'media_size' => null,
         ]);
 
         $task = app(WhatsAppInboxService::class)->convertMessageToTask($message, [
@@ -204,6 +276,13 @@ class WhatsAppInboxServiceTest extends TestCase
             'direction' => 'inbound',
             'from_phone' => '167366503714914',
             'body' => 'Issue from department group',
+            'message_type' => 'text',
+            'media_url' => null,
+            'media_type' => null,
+            'media_mime' => null,
+            'media_path' => null,
+            'media_name' => null,
+            'media_size' => null,
             'raw_payload' => [
                 'payload' => [
                     'raw_payload' => [

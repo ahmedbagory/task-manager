@@ -56,7 +56,7 @@ class WhatsAppMessageTemplates
 
         return str_replace(
             ['{task_number}', '{task_title}', '{reporter_phone}', '{assignee_name}'],
-            [$task->task_number ?? '', $task->title ?? '', $task->reported_by_phone ?? '', $assigneeName],
+            [$task->displayNumber(), $task->title ?? '', $task->reported_by_phone ?? '', $assigneeName],
             $template,
         );
     }

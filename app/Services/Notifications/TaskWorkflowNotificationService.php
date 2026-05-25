@@ -181,7 +181,7 @@ class TaskWorkflowNotificationService
         $this->sendDatabaseNotification(
             recipients: collect([$reporter]),
             title: 'بانتظار تأكيد حل المشكلة',
-            body: 'تم إرسال المهمة: '.$task->title.' للتأكيد. هل تم حل المشكلة؟',
+            body: 'تم إرسال المهمة '.$task->displayNumber().': '.$task->title.' للتأكيد. هل تم حل المشكلة؟',
             url: route('my-tasks.show', ['task' => $task]),
             status: 'warning',
             icon: 'heroicon-o-chat-bubble-left-right',
@@ -196,7 +196,7 @@ class TaskWorkflowNotificationService
         $this->sendDatabaseNotification(
             recipients: $recipients->unique('id')->values(),
             title: 'المبلّغ أكد أن المشكلة لم تُحل',
-            body: 'تم رفض إغلاق المهمة: '.$task->title.'. راجع التعليق وأكمل المتابعة.',
+            body: 'تم رفض إغلاق المهمة '.$task->displayNumber().': '.$task->title.'. راجع التعليق وأكمل المتابعة.',
             url: route('my-tasks.show', ['task' => $task]),
             status: 'danger',
             icon: 'heroicon-o-exclamation-triangle',
@@ -211,10 +211,31 @@ class TaskWorkflowNotificationService
         $this->sendDatabaseNotification(
             recipients: $recipients->unique('id')->values(),
             title: 'تم تأكيد حل المشكلة',
-            body: 'أكد المبلّغ حل المشكلة وتم إغلاق المهمة: '.$task->title,
+            body: 'أكد المبلّغ حل المشكلة وتم إغلاق المهمة '.$task->displayNumber().': '.$task->title,
             url: route('my-tasks.show', ['task' => $task]),
             status: 'success',
             icon: 'heroicon-o-check-badge',
+        );
+    }
+
+    /**
+     * @param  Collection<int, User>  $recipients
+     */
+    public function notifyTaskReopenedToAssignees(Task $task, Collection $recipients, ?User $actor = null): void
+    {
+        if ($recipients->isEmpty()) {
+            return;
+        }
+
+        $actorName = $actor?->name ?? __('النظام');
+
+        $this->sendDatabaseNotification(
+            recipients: $recipients->unique('id')->values(),
+            title: 'تمت إعادة فتح المهمة',
+            body: $actorName.' أعاد فتح المهمة '.$task->displayNumber().': '.$task->title,
+            url: route('my-tasks.show', ['task' => $task]),
+            status: 'warning',
+            icon: 'heroicon-o-arrow-path',
         );
     }
 
@@ -285,18 +306,20 @@ class TaskWorkflowNotificationService
      */
     private function assignmentCopy(Task $task, string $actorName, string $context): array
     {
+        $taskLine = $task->displayNumber().': '.$task->title;
+
         return match ($context) {
             'added_assignee' => [
                 'تمت إضافتك إلى مهمة',
-                'تمت إضافتك ضمن فريق العمل على المهمة: '.$task->title,
+                'تمت إضافتك ضمن فريق العمل على المهمة '.$taskLine,
             ],
             'reassigned' => [
                 'تمت إعادة تعيين مهمة إليك',
-                'تم نقل/إعادة تعيين المهمة: '.$task->title.' إليك بواسطة '.$actorName,
+                'تم نقل/إعادة تعيين المهمة '.$taskLine.' إليك بواسطة '.$actorName,
             ],
             default => [
                 'تم إسناد مهمة جديدة إليك',
-                'تم إسناد المهمة: '.$task->title.' إليك بواسطة '.$actorName,
+                'تم إسناد المهمة '.$taskLine.' إليك بواسطة '.$actorName,
             ],
         };
     }

@@ -67,12 +67,42 @@ class TaskAccessService
 
     public function isManagementUser(User $user): bool
     {
-        return $user->hasAnyRole([
+        return $this->managementRole($user) !== null;
+    }
+
+    public function resolveRequesterUser(Task $task): ?User
+    {
+        $task->loadMissing(['reportedByUser', 'whatsappContact.user']);
+
+        if ($task->reportedByUser) {
+            return $task->reportedByUser;
+        }
+
+        if ($task->whatsappContact?->user) {
+            return $task->whatsappContact->user;
+        }
+
+        return null;
+    }
+
+    public function managementRole(User $user): ?string
+    {
+        if ($user->hasAnyRole([
             Rbac::SUPER_ADMIN,
             Rbac::ADMIN,
+        ])) {
+            return 'admin';
+        }
+
+        if ($user->hasAnyRole([
+            Rbac::SUPER_ADMIN,
             Rbac::DISPATCHER,
             Rbac::SUPERVISOR,
-        ]) || $user->can('tasks.manage') || $user->can('tasks.assign') || $user->can('tasks.reassign');
+        ]) || $user->can('tasks.manage') || $user->can('tasks.assign') || $user->can('tasks.reassign')) {
+            return 'manager';
+        }
+
+        return null;
     }
 
     public function isReporter(User $user, Task $task): bool
@@ -219,10 +249,6 @@ class TaskAccessService
             return 'viewer';
         }
 
-        if ($this->isManagementUser($user)) {
-            return 'admin';
-        }
-
         $isReporter = $this->isReporter($user, $task);
         $isAssignee = $this->isAssignee($user, $task);
 
@@ -242,6 +268,10 @@ class TaskAccessService
             return 'creator';
         }
 
+        if ($managementRole = $this->managementRole($user)) {
+            return $managementRole;
+        }
+
         return 'viewer';
     }
 
@@ -257,10 +287,11 @@ class TaskAccessService
         $status = $task->workflowStatus();
         $role = $this->resolveCurrentUserRole($task, $user);
         $assignment = $this->resolveUserAssignment($task, $user);
+        $isManagement = $this->isManagementUser($user);
 
-        $hasAssigneeRole = in_array($role, ['assignee', 'assignee_and_requester', 'admin'], true);
-        $hasRequesterRole = in_array($role, ['requester', 'assignee_and_requester', 'admin'], true);
-        $canCollaborate = in_array($role, ['admin', 'assignee', 'requester', 'assignee_and_requester', 'creator'], true);
+        $hasAssigneeRole = in_array($role, ['assignee', 'assignee_and_requester'], true);
+        $hasRequesterRole = in_array($role, ['requester', 'assignee_and_requester'], true) || $isManagement;
+        $canCollaborate = $isManagement || in_array($role, ['assignee', 'requester', 'assignee_and_requester', 'creator'], true);
 
         $canReporterConfirm = $status === TaskStatus::AWAITING_REPORTER_CONFIRMATION && $hasRequesterRole;
 
@@ -273,8 +304,8 @@ class TaskAccessService
                 && in_array($status, [TaskStatus::IN_PROGRESS, TaskStatus::WAIT_RESPONSE, TaskStatus::REOPENED], true),
             'can_confirm_resolution' => $canReporterConfirm,
             'can_reject_resolution' => $canReporterConfirm,
-            'can_reassign' => $role === 'admin' && ($user->can('assign', $task) || $user->can('tasks.reassign')),
-            'can_close' => $role === 'admin' && ($user->can('tasks.complete') || $user->can('tasks.manage')),
+            'can_reassign' => $isManagement && ($user->can('assign', $task) || $user->can('tasks.reassign')),
+            'can_close' => $isManagement && ($user->can('tasks.complete') || $user->can('tasks.manage')),
             'can_edit' => $user->can('update', $task),
             'can_delete' => $user->can('delete', $task),
             'can_accept' => $this->canAcceptTask($task, $user),

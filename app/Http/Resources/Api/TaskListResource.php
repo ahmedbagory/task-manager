@@ -22,15 +22,17 @@ class TaskListResource extends JsonResource
 
         $status = $this->workflowStatus();
 
-        $requestedBy = $this->reportedByUser ?? $this->createdByUser;
-
-        $assignedByUser = $this->latestAssignment?->assignedByUser;
+        $taskAccessService = app(TaskAccessService::class);
+        $requesterUser = $taskAccessService->resolveRequesterUser($this->resource);
+        $assignedByUser = $this->latestAssignment?->assignedByUser ?? $this->createdByUser;
 
         $commentsCount = $this->relationLoaded('comments')
             ? $this->comments->count()
             : (int) ($this->comments_count ?? 0);
+        $attachmentsCount = $this->relationLoaded('attachments')
+            ? $this->attachments->count()
+            : (int) ($this->attachments_count ?? 0);
 
-        $taskAccessService = app(TaskAccessService::class);
         $myAssignment = $taskAccessService->resolveMyAssignment($this->resource, $request->user());
         $assignees = $taskAccessService->resolveAssignees($this->resource)
             ->map(fn ($user): array => (new UserResource($user))->resolve())
@@ -46,14 +48,10 @@ class TaskListResource extends JsonResource
             'reported_by_phone' => $this->reported_by_phone,
             'location' => $this->location,
             'source' => is_string($this->source) ? $this->source : $this->source?->value,
-            'status' => [
-                'value' => $status->value,
-                'label' => $this->workflowStatusLabel(),
-            ],
-            'priority' => [
-                'value' => $priority?->value ?? (string) $this->priority,
-                'label' => $priority?->label() ?? str((string) $this->priority)->replace('_', ' ')->title()->toString(),
-            ],
+            'status' => $status->value,
+            'status_label' => $this->workflowStatusLabel(),
+            'priority' => $priority?->value ?? (string) $this->priority,
+            'priority_label' => $priority?->label() ?? str((string) $this->priority)->replace('_', ' ')->title()->toString(),
             'department' => $this->department ? [
                 'id' => $this->department->id,
                 'name' => $this->department->name,
@@ -75,9 +73,12 @@ class TaskListResource extends JsonResource
                 ? (new UserResource($this->assignedToUser))->resolve()
                 : null,
             'assignees' => $assignees,
+            'requester' => $requesterUser
+                ? (new UserResource($requesterUser))->resolve()
+                : null,
             'reporter' => $taskAccessService->resolveReporter($this->resource),
-            'requested_by' => $requestedBy
-                ? (new UserResource($requestedBy))->resolve()
+            'requested_by' => $requesterUser
+                ? (new UserResource($requesterUser))->resolve()
                 : null,
             'assigned_by' => $assignedByUser
                 ? (new UserResource($assignedByUser))->resolve()
@@ -86,6 +87,7 @@ class TaskListResource extends JsonResource
                 ? (new UserResource($this->createdByUser))->resolve()
                 : null,
             'comments_count' => $commentsCount,
+            'attachments_count' => $attachmentsCount,
             'my_assignment' => $myAssignment,
             'current_user_role_on_task' => $taskAccessService->resolveCurrentUserRole($this->resource, $request->user()),
             'allowed_actions' => $taskAccessService->resolveAllowedActions($this->resource, $request->user()),

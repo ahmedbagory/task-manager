@@ -35,8 +35,9 @@ class WhatsappMessageInfolist
                             ->formatStateUsing(fn (?string $state) => BidiText::auto($state))
                             ->html()
                             ->placeholder('-'),
-                        TextEntry::make('task.task_number')
+                        TextEntry::make('task.id')
                             ->label(__('Linked Task #'))
+                            ->formatStateUsing(fn ($state, $record): string => $record->task?->displayNumber() ?? '-')
                             ->placeholder('-'),
                         TextEntry::make('task.title')
                             ->label(__('Linked Task Title'))

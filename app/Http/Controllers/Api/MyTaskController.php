@@ -62,7 +62,7 @@ class MyTaskController extends Controller
                 'resolutionSubmittedByUser',
                 'reporterConfirmedByUser',
             ])
-            ->withCount('comments')
+            ->withCount(['comments', 'attachments'])
             ->orderByDesc('updated_at');
 
         $this->taskAccessService->applyVisibleToUserScope($tasksQuery, $user);
