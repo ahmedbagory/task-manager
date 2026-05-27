@@ -106,6 +106,18 @@
             lastMessageId: 0,
             init() {
                 window.waRetry = (url) => this.retryMessage(url);
+                window.waOpenMedia = (url, type, name) => this.openMedia(url, type, name);
+                this._msgCfg = {
+                    outgoingAlign: @js($outgoingAlignmentClass),
+                    incomingAlign: @js($incomingAlignmentClass),
+                    isGroup: {{ $isGroupActive ? 'true' : 'false' }},
+                    labels: {
+                        fileRejected: @js(__('تم رفض الملف')),
+                        task: @js(__('المهمة')),
+                        convertToTask: @js(__('تحويل لمهمة')),
+                        retry: @js(__('إعادة الإرسال')),
+                    }
+                };
                 this.$refs.thread?.querySelectorAll('[data-msg-id]').forEach(el => {
                     const id = parseInt(el.dataset.msgId);
                     this.knownIds.add(id);
@@ -180,87 +192,21 @@
                 setTimeout(() => this.pollMessages(), 5000);
             },
             appendMessage(msg) {
-                const thread = this.$refs.thread;
+                var thread = this.$refs.thread;
                 if (!thread) return;
-                const isOutgoing = msg.direction === 'outbound';
-                const bubbleBg = isOutgoing
-                    ? 'bg-emerald-100 text-gray-950 dark:bg-emerald-500/15 dark:text-white'
-                    : 'bg-white text-gray-950 dark:bg-[#132133] dark:text-white';
-                const alignClass = isOutgoing ? '{{ $outgoingAlignmentClass }}' : '{{ $incomingAlignmentClass }}';
-                const tsColor = isOutgoing
-                    ? 'text-emerald-700/80 dark:text-emerald-200/80'
-                    : 'text-gray-500 dark:text-gray-400';
-
-                let mediaHtml = '';
-                if (msg.media_rejected) {
-                    mediaHtml = `<div class=\"mb-2 rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-100\">{{ __('تم رفض الملف') }}</div>`;
-                } else if (msg.media_type && msg.media_available && msg.media_url) {
-                    if (['image','sticker'].includes(msg.media_type)) {
-                        mediaHtml = `<div class=\"mb-2\"><img src=\"${this.escapeHtml(msg.media_url)}\" class=\"max-h-72 w-full rounded-[1.1rem] border border-black/5 object-cover cursor-pointer\" loading=\"lazy\" @click=\"openMedia('${this.escapeHtml(msg.media_url)}','image','${this.escapeHtml(msg.media_name||'')}')\" /></div>`;
-                    } else if (msg.media_type === 'audio') {
-                        mediaHtml = `<div class=\"mb-2 rounded-[1.1rem] bg-black/5 px-3 py-3 dark:bg-white/5\"><audio controls class=\"h-10 w-full min-w-[240px]\"><source src=\"${this.escapeHtml(msg.media_url)}\"></audio></div>`;
-                    }
-                }
-
-                let bodyHtml = '';
-                if (msg.body) {
-                    bodyHtml = `<p class=\"whitespace-pre-line text-[13px] leading-6\" dir=\"auto\" style=\"unicode-bidi:isolate\">${this.escapeHtml(msg.body)}</p>`;
-                }
-
-                let senderHtml = '';
-                @if ($isGroupActive)
-                if (msg.sender_name) {
-                    senderHtml = `<p class=\"mb-1 text-[11px] font-bold text-amber-600 dark:text-amber-300\">${this.escapeHtml(msg.sender_name)}</p>`;
-                }
-                @endif
-
-                let taskHtml = '';
-                if (msg.task_id && msg.task_url) {
-                    taskHtml = `<a href=\"${msg.task_url}\" class=\"inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold text-emerald-700 transition hover:bg-emerald-500/20 dark:text-emerald-200\">{{ __('المهمة') }} ${this.escapeHtml(msg.task_number||'')}</a>`;
-                } else if (msg.create_task_url) {
-                    taskHtml = `<a href=\"${msg.create_task_url}\" class=\"inline-flex items-center gap-1 rounded-full bg-black/5 px-2.5 py-1 text-[10px] font-medium text-gray-600 transition hover:bg-emerald-500/10 hover:text-emerald-700 dark:bg-white/10 dark:text-gray-300 dark:hover:text-emerald-200\">{{ __('تحويل لمهمة') }}</a>`;
-                }
-
-                let retryHtml = '';
-                if (isOutgoing && msg.status && msg.status.startsWith('failed')) {
-                    retryHtml = `<button type=\"button\" onclick=\"waRetry('${msg.retry_url}')\" class=\"inline-flex items-center gap-1 rounded-full bg-red-500/10 px-2.5 py-1 text-[10px] font-semibold text-red-700 transition hover:bg-red-500/20 dark:text-red-200\">{{ __('إعادة الإرسال') }}</button>`;
-                }
-
-                let failHtml = '';
-                if (msg.failed_reason && isOutgoing) {
-                    failHtml = `<p class=\"mt-2 text-[11px] text-red-600 dark:text-red-200\" dir=\"auto\" style=\"unicode-bidi:isolate\">${this.escapeHtml(msg.failed_reason)}</p>`;
-                }
-
-                const html = `<div class=\"mb-3 flex ${alignClass} wa-msg-enter\" data-msg-id=\"${msg.id}\">
-                    <article class=\"max-w-[88%] rounded-[1.4rem] border border-black/5 px-3 py-2 shadow-sm sm:max-w-[72%] ${bubbleBg}\">
-                        ${senderHtml}${mediaHtml}${bodyHtml}
-                        <div class=\"mt-2 flex items-center justify-between gap-3\">
-                            <div class=\"flex items-center gap-2\">${taskHtml}${retryHtml}</div>
-                            <div class=\"flex items-center gap-1.5 text-[11px] ${tsColor}\">
-                                <span>${this.escapeHtml(msg.timestamp||'')}</span>
-                            </div>
-                        </div>
-                        ${failHtml}
-                    </article>
-                </div>`;
-                thread.insertAdjacentHTML('beforeend', html);
+                thread.insertAdjacentHTML('beforeend', waBuildBubble(msg, this._msgCfg));
             },
             updateMessageStatus(msg) {
-                const el = this.$refs.thread?.querySelector(`[data-msg-id=\"${msg.id}\"]`);
+                var el = this.$refs.thread ? this.$refs.thread.querySelector('[data-msg-id="' + msg.id + '"]') : null;
                 if (!el) return;
                 if (msg.task_id && msg.task_url) {
-                    const taskLink = el.querySelector('a[href*=\"tasks/create\"]');
+                    var taskLink = el.querySelector('a[href*="tasks/create"]');
                     if (taskLink) {
                         taskLink.href = msg.task_url;
                         taskLink.className = 'inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold text-emerald-700 transition hover:bg-emerald-500/20 dark:text-emerald-200';
-                        taskLink.innerHTML = `{{ __('المهمة') }} ${this.escapeHtml(msg.task_number||'')}`;
+                        taskLink.textContent = this._msgCfg.labels.task + ' ' + (msg.task_number || '');
                     }
                 }
-            },
-            escapeHtml(str) {
-                const div = document.createElement('div');
-                div.textContent = str;
-                return div.innerHTML;
             },
             async sendMessage() {
                 if (this.sending) return;
@@ -987,4 +933,88 @@
             </div>
         </div>
     </div>
+
+    @once
+        <script>
+            function waEscape(str) {
+                var d = document.createElement('div');
+                d.textContent = str;
+                return d.innerHTML;
+            }
+
+            function waBuildBubble(msg, cfg) {
+                var isOut = msg.direction === 'outbound';
+                var bg = isOut
+                    ? 'bg-emerald-100 text-gray-950 dark:bg-emerald-500/15 dark:text-white'
+                    : 'bg-white text-gray-950 dark:bg-[#132133] dark:text-white';
+                var align = isOut ? cfg.outgoingAlign : cfg.incomingAlign;
+                var ts = isOut
+                    ? 'text-emerald-700/80 dark:text-emerald-200/80'
+                    : 'text-gray-500 dark:text-gray-400';
+
+                var media = '';
+                if (msg.media_rejected) {
+                    media = '<div class="mb-2 rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-100">'
+                        + waEscape(cfg.labels.fileRejected) + '</div>';
+                } else if (msg.media_type && msg.media_available && msg.media_url) {
+                    var safeUrl = waEscape(msg.media_url);
+                    var safeName = waEscape(msg.media_name || '');
+                    if (msg.media_type === 'image' || msg.media_type === 'sticker') {
+                        media = '<div class="mb-2"><img src="' + safeUrl
+                            + '" class="max-h-72 w-full rounded-[1.1rem] border border-black/5 object-cover cursor-pointer" loading="lazy"'
+                            + ' onclick="waOpenMedia(\'' + safeUrl.replace(/'/g, "\\'") + "','image','" + safeName.replace(/'/g, "\\'") + '\')" /></div>';
+                    } else if (msg.media_type === 'audio') {
+                        media = '<div class="mb-2 rounded-[1.1rem] bg-black/5 px-3 py-3 dark:bg-white/5">'
+                            + '<audio controls class="h-10 w-full min-w-[240px]"><source src="' + safeUrl + '"></audio></div>';
+                    }
+                }
+
+                var body = '';
+                if (msg.body) {
+                    body = '<p class="whitespace-pre-line text-[13px] leading-6" dir="auto" style="unicode-bidi:isolate">'
+                        + waEscape(msg.body) + '</p>';
+                }
+
+                var sender = '';
+                if (cfg.isGroup && msg.sender_name) {
+                    sender = '<p class="mb-1 text-[11px] font-bold text-amber-600 dark:text-amber-300">'
+                        + waEscape(msg.sender_name) + '</p>';
+                }
+
+                var task = '';
+                if (msg.task_id && msg.task_url) {
+                    task = '<a href="' + waEscape(msg.task_url)
+                        + '" class="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold text-emerald-700 transition hover:bg-emerald-500/20 dark:text-emerald-200">'
+                        + waEscape(cfg.labels.task) + ' ' + waEscape(msg.task_number || '') + '</a>';
+                } else if (msg.create_task_url) {
+                    task = '<a href="' + waEscape(msg.create_task_url)
+                        + '" class="inline-flex items-center gap-1 rounded-full bg-black/5 px-2.5 py-1 text-[10px] font-medium text-gray-600 transition hover:bg-emerald-500/10 hover:text-emerald-700 dark:bg-white/10 dark:text-gray-300 dark:hover:text-emerald-200">'
+                        + waEscape(cfg.labels.convertToTask) + '</a>';
+                }
+
+                var retry = '';
+                if (isOut && msg.status && msg.status.indexOf('failed') === 0) {
+                    retry = '<button type="button" onclick="waRetry(\'' + waEscape(msg.retry_url).replace(/'/g, "\\'")
+                        + '\')" class="inline-flex items-center gap-1 rounded-full bg-red-500/10 px-2.5 py-1 text-[10px] font-semibold text-red-700 transition hover:bg-red-500/20 dark:text-red-200">'
+                        + waEscape(cfg.labels.retry) + '</button>';
+                }
+
+                var fail = '';
+                if (msg.failed_reason && isOut) {
+                    fail = '<p class="mt-2 text-[11px] text-red-600 dark:text-red-200" dir="auto" style="unicode-bidi:isolate">'
+                        + waEscape(msg.failed_reason) + '</p>';
+                }
+
+                return '<div class="mb-3 flex ' + align + ' wa-msg-enter" data-msg-id="' + msg.id + '">'
+                    + '<article class="max-w-[88%] rounded-[1.4rem] border border-black/5 px-3 py-2 shadow-sm sm:max-w-[72%] ' + bg + '">'
+                    + sender + media + body
+                    + '<div class="mt-2 flex items-center justify-between gap-3">'
+                    + '<div class="flex items-center gap-2">' + task + retry + '</div>'
+                    + '<div class="flex items-center gap-1.5 text-[11px] ' + ts + '">'
+                    + '<span>' + waEscape(msg.timestamp || '') + '</span>'
+                    + '</div></div>' + fail
+                    + '</article></div>';
+            }
+        </script>
+    @endonce
 </x-filament-panels::page>
