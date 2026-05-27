@@ -5,29 +5,62 @@
 @source '../../../../resources/views/vendor/filament-panels/**/*';
 @source '../../../../resources/views/vendor/filament-notifications/**/*';
 
-/* Sidebar polish: keep icons and labels aligned in both RTL/LTR */
-.fi-sidebar .fi-sidebar-group-btn,
-.fi-sidebar .fi-sidebar-item-btn,
-.fi-sidebar .fi-sidebar-database-notifications-btn {
-    width: 100%;
-    justify-content: flex-start;
+/* Sidebar polish: keep the panel direction-aware in both RTL and LTR. */
+html[dir="ltr"] .fi-sidebar {
+    direction: ltr;
+    text-align: left;
+}
+
+html[dir="rtl"] .fi-sidebar {
+    direction: rtl;
+    text-align: right;
+}
+
+html[dir="ltr"] .fi-main-sidebar.fi-sidebar {
+    inset-inline-start: 0;
+    inset-inline-end: auto;
+}
+
+html[dir="rtl"] .fi-main-sidebar.fi-sidebar {
+    inset-inline-start: auto;
+    inset-inline-end: 0;
 }
 
 .fi-sidebar .fi-sidebar-group-btn,
 .fi-sidebar .fi-sidebar-item-btn,
-.fi-sidebar .fi-sidebar-database-notifications-btn {
+.fi-sidebar .fi-sidebar-database-notifications-btn,
+.fi-sidebar .fi-user-menu-trigger {
+    width: 100%;
     min-height: 2.875rem;
     border-radius: 1rem;
     text-align: start;
 }
 
+.fi-sidebar.fi-sidebar-open .fi-sidebar-group-btn,
+.fi-sidebar.fi-sidebar-open .fi-sidebar-item-btn,
+.fi-sidebar.fi-sidebar-open .fi-sidebar-database-notifications-btn,
+.fi-sidebar.fi-sidebar-open .fi-user-menu-trigger {
+    justify-content: flex-start;
+}
+
+.fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-item-btn,
+.fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-database-notifications-btn,
+.fi-sidebar:not(.fi-sidebar-open) .fi-user-menu-trigger,
+.fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-group-dropdown-trigger-btn {
+    justify-content: center;
+}
+
 .fi-sidebar .fi-sidebar-group-label,
 .fi-sidebar .fi-sidebar-item-label,
-.fi-sidebar .fi-sidebar-database-notifications-btn-label {
+.fi-sidebar .fi-sidebar-database-notifications-btn-label,
+.fi-sidebar .fi-user-menu-trigger-text {
     text-align: start;
 }
 
-.fi-sidebar .fi-sidebar-group-collapse-btn {
+.fi-sidebar .fi-sidebar-group-collapse-btn,
+.fi-sidebar .fi-sidebar-item-badge-ctn,
+.fi-sidebar .fi-sidebar-database-notifications-btn-badge-ctn,
+.fi-sidebar .fi-user-menu-trigger > .fi-icon {
     margin-inline-start: auto;
 }
 
