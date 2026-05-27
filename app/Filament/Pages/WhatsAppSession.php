@@ -11,6 +11,7 @@ use Filament\Actions\Action;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Support\Icons\Heroicon;
+use Illuminate\Contracts\View\View;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\HtmlString;
@@ -54,6 +55,23 @@ class WhatsAppSession extends Page
     public function getTitle(): string|HtmlString
     {
         return __('جلسة واتساب');
+    }
+
+    public function getSubheading(): string|HtmlString|null
+    {
+        return __('مراقبة حالة الربط والبريدج');
+    }
+
+    public function getHeader(): ?View
+    {
+        return view('filament.pages.partials.whatsapp-session-header', [
+            'heading' => $this->getHeading(),
+            'subheading' => $this->getSubheading(),
+            'statusLabel' => $this->currentLabel(),
+            'statusBadge' => $this->currentBadge(),
+            'headerActions' => $this->getCachedHeaderActions(),
+            'headerActionsAlignment' => $this->getHeaderActionsAlignment(),
+        ]);
     }
 
     public static function getNavigationLabel(): string
@@ -141,23 +159,6 @@ class WhatsAppSession extends Page
                         ->send();
 
                     sleep(3);
-                    $this->refreshBridgeData();
-                }),
-
-            Action::make('watchdogRestart')
-                ->label(__('إشارة Watchdog'))
-                ->icon(Heroicon::OutlinedClock)
-                ->color('gray')
-                ->action(function (): void {
-                    $service = app(WhatsappBridgeProcessService::class);
-                    $service->createRestartFlag();
-
-                    Notification::make()
-                        ->success()
-                        ->title(__('تم تسجيل طلب إعادة التشغيل'))
-                        ->body(__('سيتعامل معه الـ Watchdog في الدورة التالية.'))
-                        ->send();
-
                     $this->refreshBridgeData();
                 }),
 
@@ -269,12 +270,12 @@ class WhatsAppSession extends Page
         $status = $this->bridgeStatus ?? [];
 
         return [
-            ['label' => 'الحساب', 'value' => $this->formatAccount()],
-            ['label' => 'المجموعات', 'value' => (string) ((int) ($status['groups_count'] ?? 0))],
-            ['label' => 'آخر نبضة', 'value' => $this->formatTimestamp($status['last_heartbeat_at'] ?? null)],
-            ['label' => 'آخر رسالة', 'value' => $this->formatTimestamp($status['last_message_at'] ?? null)],
+            ['label' => 'الحساب المتصل', 'value' => $this->formatAccount()],
             ['label' => 'PM2', 'value' => (string) ($status['pm2_status'] ?? 'unknown')],
+            ['label' => 'آخر رسالة', 'value' => $this->formatTimestamp($status['last_message_at'] ?? null)],
+            ['label' => 'آخر نبضة', 'value' => $this->formatTimestamp($status['last_heartbeat_at'] ?? null)],
             ['label' => 'الإرسال', 'value' => $this->sendModeLabel()],
+            ['label' => 'عدد المجموعات', 'value' => (string) ((int) ($status['groups_count'] ?? 0))],
         ];
     }
 
@@ -285,7 +286,7 @@ class WhatsAppSession extends Page
     {
         $d = $this->diagnostics;
 
-        return [
+        $rows = [
             ['label' => 'PM2', 'value' => ($d['pm2_found'] ?? false) ? 'متوفر' : 'غير متوفر'],
             ['label' => 'مسار PM2', 'value' => (string) ($d['pm2_bin'] ?? '-')],
             ['label' => 'إصدار Node', 'value' => (string) ($d['node_version'] ?? '-')],
@@ -296,6 +297,14 @@ class WhatsAppSession extends Page
             ['label' => 'الذاكرة', 'value' => (string) ($d['memory'] ?? '-')],
             ['label' => 'مجلد auth', 'value' => ($d['auth_exists'] ?? false) ? 'موجود' : 'مفقود'],
         ];
+
+        $lastError = trim((string) ($this->bridgeStatus['last_error'] ?? ''));
+
+        if ($lastError !== '') {
+            $rows[] = ['label' => 'آخر خطأ', 'value' => $lastError];
+        }
+
+        return $rows;
     }
 
     public function canShowQr(): bool

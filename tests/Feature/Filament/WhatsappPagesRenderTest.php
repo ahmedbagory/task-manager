@@ -70,16 +70,27 @@ class WhatsappPagesRenderTest extends TestCase
 
         $this->fakeWhatsappUiDependencies();
 
-        $this->actingAs($admin)
-            ->get(WhatsAppSession::getUrl())
+        $response = $this->actingAs($admin)
+            ->get(WhatsAppSession::getUrl());
+
+        $response
             ->assertOk()
             ->assertSee('جلسة واتساب')
             ->assertSee('يحتاج QR')
+            ->assertSee('مراقبة حالة الربط والبريدج')
             ->assertSee('إعادة تشغيل البريدج')
-            ->assertSee('إعادة الربط / Reconnect');
+            ->assertSee('إعادة الربط / Reconnect')
+            ->assertSee('فصل الجلسة')
+            ->assertSee('الجلسة تحتاج QR لكن الرمز غير متاح بعد');
+
+        $content = $response->getContent();
+
+        $this->assertSame(1, substr_count($content, 'data-whatsapp-session-status-badge'));
+        $this->assertSame(1, substr_count($content, 'data-whatsapp-session-primary-actions'));
+        $this->assertSame(1, preg_match_all('/>\s*يحتاج QR\s*</u', $content));
     }
 
-    public function test_admin_can_still_see_restart_bridge_and_qr_shortcut_when_session_is_connected(): void
+    public function test_admin_connected_session_shows_single_status_badge_and_single_action_bar(): void
     {
         app(RbacInitializationService::class)->seed();
 
@@ -103,13 +114,24 @@ class WhatsappPagesRenderTest extends TestCase
             ],
         ]);
 
-        $this->actingAs($admin)
-            ->get(WhatsAppSession::getUrl())
+        $response = $this->actingAs($admin)
+            ->get(WhatsAppSession::getUrl());
+
+        $response
             ->assertOk()
             ->assertSee('متصل')
             ->assertSee('إعادة تشغيل البريدج')
             ->assertSee('إعادة الربط / Reconnect')
-            ->assertSee('عرض QR');
+            ->assertSee('فصل الجلسة')
+            ->assertSee('لا يوجد QR مطلوب حاليًا')
+            ->assertSee('السجلات');
+
+        $content = $response->getContent();
+
+        $this->assertSame(1, substr_count($content, 'data-whatsapp-session-status-badge'));
+        $this->assertSame(1, substr_count($content, 'data-whatsapp-session-primary-actions'));
+        $this->assertSame(1, preg_match_all('/>\s*متصل\s*</u', $content));
+        $this->assertStringNotContainsString('عرض QR', $content);
     }
 
     public function test_whatsapp_inbox_layout_follows_the_active_locale_direction(): void
