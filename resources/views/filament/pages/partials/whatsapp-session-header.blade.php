@@ -3,30 +3,26 @@
 @endphp
 
 <header class="fi-header" data-whatsapp-session-header>
-    <div class="space-y-3">
-        <div class="flex flex-wrap items-center gap-3">
-            <h1 class="fi-header-heading">
-                {{ $heading }}
-            </h1>
+    <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <h1 class="fi-header-heading">
+            {{ $heading }}
+        </h1>
 
-            <div data-whatsapp-session-status-badge>
-                <x-filament::badge :color="$statusBadge">
-                    {{ $statusLabel }}
-                </x-filament::badge>
-            </div>
-        </div>
+        <x-filament::badge :color="$statusBadge">
+            {{ $statusLabel }}
+        </x-filament::badge>
+    </div>
 
+    @if ($subheading)
         <p class="fi-header-subheading">
             {{ $subheading }}
         </p>
-    </div>
+    @endif
 
     @if ($hasActions)
-        <div class="fi-header-actions-ctn" data-whatsapp-session-primary-actions>
-            <x-filament::actions
-                :actions="$headerActions"
-                :alignment="$headerActionsAlignment"
-            />
-        </div>
+        <x-filament::actions
+            :actions="$headerActions"
+            :alignment="$headerActionsAlignment"
+        />
     @endif
 </header>
