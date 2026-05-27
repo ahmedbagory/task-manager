@@ -49,6 +49,9 @@ Route::middleware('auth')->group(function (): void {
         );
     })->name('whatsapp.bridge-status');
 
+    Route::get('/whatsapp/messages/poll', [WhatsappConversationController::class, 'poll'])
+        ->name('whatsapp.messages.poll');
+
     Route::middleware('throttle:30,1')->group(function (): void {
         Route::post('/whatsapp/messages/send', [WhatsappConversationController::class, 'send'])
             ->name('whatsapp.messages.send');

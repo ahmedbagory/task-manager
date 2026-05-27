@@ -38,6 +38,15 @@
             .dark [data-wa-root] .wa-thread-bg {
                 background-image: url("data:image/svg+xml,%3Csvg width='84' height='84' viewBox='0 0 84 84' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23334155' fill-opacity='.16'%3E%3Cpath d='M42 6a4 4 0 0 1 4 4v6h6a4 4 0 1 1 0 8h-6v6a4 4 0 1 1-8 0v-6h-6a4 4 0 1 1 0-8h6v-6a4 4 0 0 1 4-4Zm-24 48a4 4 0 0 1 4 4v6h6a4 4 0 1 1 0 8h-6v6a4 4 0 1 1-8 0v-6H8a4 4 0 1 1 0-8h6v-6a4 4 0 0 1 4-4Zm48 0a4 4 0 0 1 4 4v6h6a4 4 0 1 1 0 8h-6v6a4 4 0 1 1-8 0v-6h-6a4 4 0 1 1 0-8h6v-6a4 4 0 0 1 4-4Z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
             }
+
+            @keyframes waMsgEnter {
+                from { opacity: 0; transform: translateY(12px) scale(0.97); }
+                to   { opacity: 1; transform: translateY(0) scale(1); }
+            }
+
+            .wa-msg-enter {
+                animation: waMsgEnter 0.28s ease-out both;
+            }
         </style>
     @endonce
 
@@ -80,6 +89,8 @@
         x-data="{
             mobileView: {{ $hasActiveConversation ? "'chat'" : "'list'" }},
             sending: false,
+            uploadProgress: 0,
+            uploading: false,
             lightboxOpen: false,
             lightboxUrl: '',
             lightboxType: 'image',
@@ -91,9 +102,18 @@
             bridgeCanSend: {{ ($bridgeStatus['can_send'] ?? false) ? 'true' : 'false' }},
             bridgeCanQueue: {{ ($bridgeStatus['can_queue'] ?? false) ? 'true' : 'false' }},
             bridgeComposerEnabled: {{ (($bridgeStatus['supports_bridge'] ?? false) && ($bridgeStatus['outbound_enabled'] ?? false)) ? 'true' : 'false' }},
+            knownIds: new Set(),
+            lastMessageId: 0,
             init() {
+                window.waRetry = (url) => this.retryMessage(url);
+                this.$refs.thread?.querySelectorAll('[data-msg-id]').forEach(el => {
+                    const id = parseInt(el.dataset.msgId);
+                    this.knownIds.add(id);
+                    if (id > this.lastMessageId) this.lastMessageId = id;
+                });
                 this.scrollToBottom();
                 this.pollBridge();
+                this.pollMessages();
             },
             setBridge(data) {
                 this.bridgeState = data.state || 'disconnected';
@@ -124,17 +144,214 @@
 
                 setTimeout(() => this.pollBridge(), 10000);
             },
+            async pollMessages() {
+                @if ($hasActiveConversation)
+                try {
+                    const params = new URLSearchParams({
+                        after_id: this.lastMessageId,
+                        @if ($isGroupActive)
+                            group_id: @js($this->getActiveGroupId()),
+                        @else
+                            contact_id: @js($activeContact?->id ?? 0),
+                        @endif
+                    });
+                    const response = await fetch('{{ route('whatsapp.messages.poll') }}?' + params, {
+                        headers: { Accept: 'application/json' },
+                    });
+                    if (response.ok) {
+                        const data = await response.json();
+                        const thread = this.$refs.thread;
+                        const isNearBottom = thread && (thread.scrollHeight - thread.scrollTop - thread.clientHeight < 120);
+                        data.messages.forEach(msg => {
+                            if (!this.knownIds.has(msg.id)) {
+                                this.knownIds.add(msg.id);
+                                if (msg.id > this.lastMessageId) this.lastMessageId = msg.id;
+                                this.appendMessage(msg);
+                            } else {
+                                this.updateMessageStatus(msg);
+                            }
+                        });
+                        if (isNearBottom && data.messages.length > 0) {
+                            this.$nextTick(() => { if (thread) thread.scrollTop = thread.scrollHeight; });
+                        }
+                    }
+                } catch (_) {}
+                @endif
+                setTimeout(() => this.pollMessages(), 5000);
+            },
+            appendMessage(msg) {
+                const thread = this.$refs.thread;
+                if (!thread) return;
+                const isOutgoing = msg.direction === 'outbound';
+                const bubbleBg = isOutgoing
+                    ? 'bg-emerald-100 text-gray-950 dark:bg-emerald-500/15 dark:text-white'
+                    : 'bg-white text-gray-950 dark:bg-[#132133] dark:text-white';
+                const alignClass = isOutgoing ? '{{ $outgoingAlignmentClass }}' : '{{ $incomingAlignmentClass }}';
+                const tsColor = isOutgoing
+                    ? 'text-emerald-700/80 dark:text-emerald-200/80'
+                    : 'text-gray-500 dark:text-gray-400';
+
+                let mediaHtml = '';
+                if (msg.media_rejected) {
+                    mediaHtml = `<div class=\"mb-2 rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-100\">{{ __('تم رفض الملف') }}</div>`;
+                } else if (msg.media_type && msg.media_available && msg.media_url) {
+                    if (['image','sticker'].includes(msg.media_type)) {
+                        mediaHtml = `<div class=\"mb-2\"><img src=\"${this.escapeHtml(msg.media_url)}\" class=\"max-h-72 w-full rounded-[1.1rem] border border-black/5 object-cover cursor-pointer\" loading=\"lazy\" @click=\"openMedia('${this.escapeHtml(msg.media_url)}','image','${this.escapeHtml(msg.media_name||'')}')\" /></div>`;
+                    } else if (msg.media_type === 'audio') {
+                        mediaHtml = `<div class=\"mb-2 rounded-[1.1rem] bg-black/5 px-3 py-3 dark:bg-white/5\"><audio controls class=\"h-10 w-full min-w-[240px]\"><source src=\"${this.escapeHtml(msg.media_url)}\"></audio></div>`;
+                    }
+                }
+
+                let bodyHtml = '';
+                if (msg.body) {
+                    bodyHtml = `<p class=\"whitespace-pre-line text-[13px] leading-6\" dir=\"auto\" style=\"unicode-bidi:isolate\">${this.escapeHtml(msg.body)}</p>`;
+                }
+
+                let senderHtml = '';
+                @if ($isGroupActive)
+                if (msg.sender_name) {
+                    senderHtml = `<p class=\"mb-1 text-[11px] font-bold text-amber-600 dark:text-amber-300\">${this.escapeHtml(msg.sender_name)}</p>`;
+                }
+                @endif
+
+                let taskHtml = '';
+                if (msg.task_id && msg.task_url) {
+                    taskHtml = `<a href=\"${msg.task_url}\" class=\"inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold text-emerald-700 transition hover:bg-emerald-500/20 dark:text-emerald-200\">{{ __('المهمة') }} ${this.escapeHtml(msg.task_number||'')}</a>`;
+                } else if (msg.create_task_url) {
+                    taskHtml = `<a href=\"${msg.create_task_url}\" class=\"inline-flex items-center gap-1 rounded-full bg-black/5 px-2.5 py-1 text-[10px] font-medium text-gray-600 transition hover:bg-emerald-500/10 hover:text-emerald-700 dark:bg-white/10 dark:text-gray-300 dark:hover:text-emerald-200\">{{ __('تحويل لمهمة') }}</a>`;
+                }
+
+                let retryHtml = '';
+                if (isOutgoing && msg.status && msg.status.startsWith('failed')) {
+                    retryHtml = `<button type=\"button\" onclick=\"waRetry('${msg.retry_url}')\" class=\"inline-flex items-center gap-1 rounded-full bg-red-500/10 px-2.5 py-1 text-[10px] font-semibold text-red-700 transition hover:bg-red-500/20 dark:text-red-200\">{{ __('إعادة الإرسال') }}</button>`;
+                }
+
+                let failHtml = '';
+                if (msg.failed_reason && isOutgoing) {
+                    failHtml = `<p class=\"mt-2 text-[11px] text-red-600 dark:text-red-200\" dir=\"auto\" style=\"unicode-bidi:isolate\">${this.escapeHtml(msg.failed_reason)}</p>`;
+                }
+
+                const html = `<div class=\"mb-3 flex ${alignClass} wa-msg-enter\" data-msg-id=\"${msg.id}\">
+                    <article class=\"max-w-[88%] rounded-[1.4rem] border border-black/5 px-3 py-2 shadow-sm sm:max-w-[72%] ${bubbleBg}\">
+                        ${senderHtml}${mediaHtml}${bodyHtml}
+                        <div class=\"mt-2 flex items-center justify-between gap-3\">
+                            <div class=\"flex items-center gap-2\">${taskHtml}${retryHtml}</div>
+                            <div class=\"flex items-center gap-1.5 text-[11px] ${tsColor}\">
+                                <span>${this.escapeHtml(msg.timestamp||'')}</span>
+                            </div>
+                        </div>
+                        ${failHtml}
+                    </article>
+                </div>`;
+                thread.insertAdjacentHTML('beforeend', html);
+            },
+            updateMessageStatus(msg) {
+                const el = this.$refs.thread?.querySelector(`[data-msg-id=\"${msg.id}\"]`);
+                if (!el) return;
+                if (msg.task_id && msg.task_url) {
+                    const taskLink = el.querySelector('a[href*=\"tasks/create\"]');
+                    if (taskLink) {
+                        taskLink.href = msg.task_url;
+                        taskLink.className = 'inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold text-emerald-700 transition hover:bg-emerald-500/20 dark:text-emerald-200';
+                        taskLink.innerHTML = `{{ __('المهمة') }} ${this.escapeHtml(msg.task_number||'')}`;
+                    }
+                }
+            },
+            escapeHtml(str) {
+                const div = document.createElement('div');
+                div.textContent = str;
+                return div.innerHTML;
+            },
+            async sendMessage() {
+                if (this.sending) return;
+                const composerEl = this.$refs.composer;
+                const fileInput = this.$refs.fileInput;
+                const body = (composerEl?.value || '').trim();
+                const file = fileInput?.files[0] || null;
+                if (!body && !file) return;
+
+                this.sending = true;
+                this.uploading = !!file;
+                this.uploadProgress = 0;
+
+                const formData = new FormData();
+                formData.append('_token', @js(csrf_token()));
+                if (body) formData.append('body', body);
+                if (file) formData.append('attachment', file);
+                @if ($isGroupActive)
+                    formData.append('group_id', @js($this->getActiveGroupId()));
+                    formData.append('group_name', @js($activeGroupName));
+                    formData.append('phone', @js($this->getGroupSendPhone()));
+                @else
+                    formData.append('phone', @js($activeContact?->phone ?? ''));
+                    @if ($sendToSameGroup && $replyGroup)
+                        formData.append('group_id', @js($replyGroup['group_id']));
+                        formData.append('group_name', @js($replyGroup['group_name']));
+                    @endif
+                @endif
+
+                try {
+                    const xhr = new XMLHttpRequest();
+                    const result = await new Promise((resolve, reject) => {
+                        xhr.open('POST', '{{ route('whatsapp.messages.send') }}');
+                        xhr.setRequestHeader('Accept', 'application/json');
+                        xhr.upload.addEventListener('progress', (e) => {
+                            if (e.lengthComputable) {
+                                this.uploadProgress = Math.round((e.loaded / e.total) * 100);
+                            }
+                        });
+                        xhr.addEventListener('load', () => {
+                            try { resolve(JSON.parse(xhr.responseText)); }
+                            catch (_) { reject(new Error('Invalid response')); }
+                        });
+                        xhr.addEventListener('error', () => reject(new Error('Network error')));
+                        xhr.send(formData);
+                    });
+
+                    if (result.whatsapp_message) {
+                        const msg = result.whatsapp_message;
+                        if (!this.knownIds.has(msg.id)) {
+                            this.knownIds.add(msg.id);
+                            if (msg.id > this.lastMessageId) this.lastMessageId = msg.id;
+                            this.appendMessage(msg);
+                        }
+                    }
+
+                    if (composerEl) { composerEl.value = ''; composerEl.style.height = ''; }
+                    if (fileInput) fileInput.value = '';
+                    this.fileName = null; this.fileSize = null;
+                    if (this.previewUrl) { URL.revokeObjectURL(this.previewUrl); this.previewUrl = null; }
+                    this.scrollToBottom();
+                } catch (err) {
+                    console.error('Send failed:', err);
+                }
+
+                this.sending = false;
+                this.uploading = false;
+                this.uploadProgress = 0;
+            },
+            async retryMessage(url) {
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': @js(csrf_token()) },
+                    });
+                    if (response.ok) {
+                        const result = await response.json();
+                        if (result.whatsapp_message) {
+                            this.updateMessageStatus(result.whatsapp_message);
+                        }
+                    }
+                } catch (_) {}
+            },
             resize(el) {
                 el.style.height = '0px';
                 el.style.height = Math.min(el.scrollHeight, 140) + 'px';
             },
             submitOnEnter(event) {
-                if (event.shiftKey) {
-                    return;
-                }
-
+                if (event.shiftKey) return;
                 event.preventDefault();
-                event.target.form?.requestSubmit();
+                this.sendMessage();
             },
             scrollToBottom() {
                 this.$nextTick(() => {
@@ -396,7 +613,7 @@
                                     : 'text-gray-500 dark:text-gray-400';
                             @endphp
 
-                            <div class="mb-3 flex {{ $isOutgoing ? $outgoingAlignmentClass : $incomingAlignmentClass }}">
+                            <div class="mb-3 flex {{ $isOutgoing ? $outgoingAlignmentClass : $incomingAlignmentClass }}" data-msg-id="{{ $message->id }}">
                                 <article class="max-w-[88%] rounded-[1.4rem] border border-black/5 px-3 py-2 shadow-sm sm:max-w-[72%] {{ $bubbleClasses }}">
                                     @if ($senderName)
                                         <p class="mb-1 text-[11px] font-bold text-amber-600 dark:text-amber-300">
@@ -511,16 +728,14 @@
                                             @endif
 
                                             @if ($isOutgoing && str_starts_with((string) $message->status, 'failed'))
-                                                <form method="POST" action="{{ route('whatsapp.messages.retry', $message) }}">
-                                                    @csrf
-                                                    <button
-                                                        type="submit"
-                                                        class="inline-flex items-center gap-1 rounded-full bg-red-500/10 px-2.5 py-1 text-[10px] font-semibold text-red-700 transition hover:bg-red-500/20 dark:text-red-200"
-                                                    >
-                                                        <x-filament::icon icon="heroicon-o-arrow-path" class="h-3.5 w-3.5" />
-                                                        <span>{{ __('إعادة الإرسال') }}</span>
-                                                    </button>
-                                                </form>
+                                                <button
+                                                    type="button"
+                                                    @click="retryMessage('{{ route('whatsapp.messages.retry', $message) }}')"
+                                                    class="inline-flex items-center gap-1 rounded-full bg-red-500/10 px-2.5 py-1 text-[10px] font-semibold text-red-700 transition hover:bg-red-500/20 dark:text-red-200"
+                                                >
+                                                    <x-filament::icon icon="heroicon-o-arrow-path" class="h-3.5 w-3.5" />
+                                                    <span>{{ __('إعادة الإرسال') }}</span>
+                                                </button>
                                             @endif
                                         </div>
 
@@ -566,26 +781,7 @@
 
                 <footer class="shrink-0 border-t border-gray-200/80 bg-white/90 px-3 py-3 backdrop-blur dark:border-white/10 dark:bg-[#081320]/92 sm:px-4">
                     @if ($canSend && $canUseComposer)
-                        <form
-                            method="POST"
-                            action="{{ route('whatsapp.messages.send') }}"
-                            enctype="multipart/form-data"
-                            @submit="sending = true"
-                        >
-                            @csrf
-
-                            @if ($isGroupActive)
-                                <input type="hidden" name="group_id" value="{{ $this->getActiveGroupId() }}">
-                                <input type="hidden" name="group_name" value="{{ $activeGroupName }}">
-                                <input type="hidden" name="phone" value="{{ $this->getGroupSendPhone() }}">
-                            @else
-                                <input type="hidden" name="phone" value="{{ $activeContact->phone }}">
-                                @if ($sendToSameGroup && $replyGroup)
-                                    <input type="hidden" name="group_id" value="{{ $replyGroup['group_id'] }}">
-                                    <input type="hidden" name="group_name" value="{{ $replyGroup['group_name'] }}">
-                                @endif
-                            @endif
-
+                        <div>
                             @if ($isGroupActive)
                                 <div class="mb-2 rounded-2xl bg-emerald-50 px-3 py-2 text-[11px] text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200">
                                     {{ __('الإرسال سيتم إلى المجموعة الحالية:') }}
@@ -669,11 +865,28 @@
                                     </button>
                                 </div>
 
+                                <div
+                                    x-show="uploading"
+                                    x-cloak
+                                    x-transition
+                                    class="mb-2 overflow-hidden rounded-2xl border border-emerald-200 bg-emerald-50/80 dark:border-emerald-500/20 dark:bg-emerald-500/10"
+                                >
+                                    <div class="flex items-center gap-2 px-3 py-2">
+                                        <svg class="h-4 w-4 animate-spin text-emerald-600 dark:text-emerald-300" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                                        <span class="text-[11px] font-medium text-emerald-700 dark:text-emerald-200">{{ __('جاري الرفع...') }}</span>
+                                        <span class="text-[11px] text-emerald-600 dark:text-emerald-300" x-text="uploadProgress + '%'"></span>
+                                    </div>
+                                    <div class="h-1 bg-emerald-100 dark:bg-emerald-900/40">
+                                        <div class="h-full bg-emerald-500 transition-all duration-300" :style="'width:' + uploadProgress + '%'"></div>
+                                    </div>
+                                </div>
+
                                 <div class="flex items-end gap-2">
                                     <button
                                         type="button"
                                         @click="pickFile()"
-                                        class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 transition hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-600 dark:border-white/10 dark:bg-white/10 dark:text-gray-300 dark:hover:border-emerald-500/30 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-200"
+                                        :disabled="sending"
+                                        class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 transition hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-600 disabled:opacity-50 dark:border-white/10 dark:bg-white/10 dark:text-gray-300 dark:hover:border-emerald-500/30 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-200"
                                         title="{{ __('رفع مرفق') }}"
                                     >
                                         <x-filament::icon icon="heroicon-o-paper-clip" class="h-5 w-5" />
@@ -682,7 +895,6 @@
                                     <input
                                         x-ref="fileInput"
                                         type="file"
-                                        name="attachment"
                                         class="hidden"
                                         accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,audio/mpeg,audio/ogg,audio/webm,audio/mp4,video/mp4,video/webm"
                                         @change="onFileChange($event)"
@@ -691,7 +903,6 @@
                                     <div class="min-w-0 flex-1 rounded-[1.4rem] border border-gray-200 bg-gray-50 px-3 py-2 dark:border-white/10 dark:bg-white/5">
                                         <textarea
                                             x-ref="composer"
-                                            name="body"
                                             rows="1"
                                             placeholder="{{ __('اكتب رسالتك أو أرفق صورة / ملف') }}"
                                             dir="auto"
@@ -699,11 +910,12 @@
                                             class="max-h-[130px] min-h-[38px] w-full resize-none border-0 bg-transparent p-0 text-[13px] text-gray-900 outline-none focus:ring-0 dark:text-white"
                                             @input="resize($event.target)"
                                             @keydown.enter="submitOnEnter($event)"
-                                        >{{ old('body') }}</textarea>
+                                        ></textarea>
                                     </div>
 
                                     <button
-                                        type="submit"
+                                        type="button"
+                                        @click="sendMessage()"
                                         class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white shadow-sm transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
                                         :disabled="sending"
                                         title="{{ __('إرسال') }}"
@@ -713,7 +925,7 @@
                                     </button>
                                 </div>
                             </div>
-                        </form>
+                        </div>
                     @elseif (! $canSend)
                         <div class="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-4 py-3 text-sm text-gray-500 dark:border-white/10 dark:bg-white/5 dark:text-gray-400">
                             {{ __('ليس لديك صلاحية إرسال رسائل واتساب من هذه الصفحة.') }}
