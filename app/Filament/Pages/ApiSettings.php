@@ -116,10 +116,13 @@ class ApiSettings extends Page
                             ->live()
                             ->native(false)
                             ->helperText(fn (Get $get): string => match ($get('provider')) {
-                                'manual' => __('Manual Webhook URL: /webhooks/inbound-message'),
-                                'meta' => __('Meta Verify: GET /webhooks/meta/whatsapp | Meta Receive: POST /webhooks/meta/whatsapp'),
-                                'twilio' => __('Twilio Inbound URL: /webhooks/twilio/whatsapp'),
-                                '360dialog' => __('360dialog Inbound URL: /webhooks/360dialog/whatsapp'),
+                                'manual' => __('Manual Webhook URL: :url', ['url' => $this->whatsappUrl('manual')]),
+                                'meta' => __('Meta Verify: GET :verify | Meta Receive: POST :receive', [
+                                    'verify' => $this->whatsappUrl('meta_verify'),
+                                    'receive' => $this->whatsappUrl('meta_receive'),
+                                ]),
+                                'twilio' => __('Twilio Inbound URL: :url', ['url' => $this->whatsappUrl('twilio')]),
+                                '360dialog' => __('360dialog Inbound URL: :url', ['url' => $this->whatsappUrl('dialog360')]),
                                 'whatsapp_web_bridge' => __('Use this option to receive messages from a normal WhatsApp group using the local Node.js Baileys bridge. The bridge must be running separately.'),
                                 default => __('Choose provider to show required settings.'),
                             }),
@@ -243,10 +246,10 @@ class ApiSettings extends Page
                     ->components([
                         Placeholder::make('bridge_webhook_url')
                             ->label(__('Webhook URL'))
-                            ->content('/webhooks/inbound-message'),
+                            ->content(fn (): string => $this->whatsappUrl('bridge_webhook')),
                         Placeholder::make('bridge_heartbeat_url')
                             ->label(__('Heartbeat URL'))
-                            ->content('/webhooks/bridge/heartbeat'),
+                            ->content(fn (): string => $this->whatsappUrl('bridge_heartbeat')),
                         Placeholder::make('bridge_status')
                             ->label(__('Status'))
                             ->content(fn (): HtmlString => $this->renderBridgeStatusBadge())
@@ -399,6 +402,11 @@ class ApiSettings extends Page
         }
 
         return $name !== '-' ? $name : $id;
+    }
+
+    private function whatsappUrl(string $key): string
+    {
+        return trim((string) config("whatsapp.webhook_urls.{$key}", '-')) ?: '-';
     }
 
     private function renderBridgeStatusBadge(): HtmlString

@@ -1,5 +1,14 @@
 <?php
 
+use App\Support\PublicUrl;
+
+$publicStorageUrl = PublicUrl::resolveStorageUrl(
+    appUrl: env('APP_URL'),
+    publicAppUrl: env('PUBLIC_APP_URL'),
+    laravelAppUrl: env('LARAVEL_APP_URL'),
+    environment: env('APP_ENV', 'production'),
+);
+
 return [
 
     /*
@@ -41,7 +50,7 @@ return [
         'public' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),
-            'url' => rtrim(env('APP_URL', 'http://localhost'), '/').'/storage',
+            'url' => $publicStorageUrl,
             'visibility' => 'public',
             'throw' => false,
             'report' => false,

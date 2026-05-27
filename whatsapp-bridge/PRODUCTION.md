@@ -65,6 +65,11 @@ The bridge will NOT auto-reconnect in this case. To fix:
 
 | Variable | Description |
 |---|---|
+| `APP_ENV` | Set to `production` so public URL fallbacks never resolve to localhost |
+| `PUBLIC_APP_URL` | Public app base URL (`https://task.devline.studio`) |
+| `LARAVEL_APP_URL` | Public Laravel base URL (`https://task.devline.studio`) |
+| `LARAVEL_API_URL` | Public Laravel API base URL (`https://task.devline.studio/api`) |
+| `LARAVEL_PUBLIC_URL` | Public root used for bridge media URLs |
 | `LARAVEL_WEBHOOK_URL` | Laravel inbound message endpoint |
 | `LARAVEL_HEARTBEAT_URL` | Laravel heartbeat endpoint |
 | `LARAVEL_OUTBOUND_PULL_URL` | Laravel outbound pull endpoint |
@@ -74,4 +79,4 @@ The bridge will NOT auto-reconnect in this case. To fix:
 | `IGNORE_OLD_MESSAGES` | Skip messages from before startup |
 | `HEARTBEAT_INTERVAL_SECONDS` | Heartbeat frequency (default: 30) |
 | `OUTBOUND_POLL_SECONDS` | Outbound poll frequency (default: 5) |
-| `API_PORT` | Local API port (default: 3001) |
+| `API_PORT` | Local bridge API port (default: 3001, stays internal on `127.0.0.1`) |

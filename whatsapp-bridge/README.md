@@ -30,8 +30,14 @@ npm run start
 Edit `whatsapp-bridge/.env`:
 
 ```dotenv
-LARAVEL_WEBHOOK_URL=http://127.0.0.1:8000/webhooks/inbound-message
-LARAVEL_HEARTBEAT_URL=http://127.0.0.1:8000/webhooks/bridge/heartbeat
+APP_ENV=production
+PUBLIC_APP_URL=https://task.devline.studio
+LARAVEL_APP_URL=https://task.devline.studio
+LARAVEL_API_URL=https://task.devline.studio/api
+LARAVEL_PUBLIC_URL=https://task.devline.studio
+LARAVEL_WEBHOOK_URL=https://task.devline.studio/webhooks/inbound-message
+LARAVEL_HEARTBEAT_URL=https://task.devline.studio/webhooks/bridge/heartbeat
+LARAVEL_OUTBOUND_PULL_URL=https://task.devline.studio/webhooks/bridge/outbound
 BRIDGE_SECRET=change_me
 GROUP_ID=
 GROUP_NAME=
@@ -66,8 +72,8 @@ Use this list to copy `GROUP_ID` into `.env`.
 2. Select provider: **WhatsApp Web Bridge**.
 3. Set bridge secret.
 4. Save settings.
-5. Copy webhook URL: `/webhooks/inbound-message`.
-6. Copy heartbeat URL: `/webhooks/bridge/heartbeat`.
+5. Copy webhook URL: `https://task.devline.studio/webhooks/inbound-message`.
+6. Copy heartbeat URL: `https://task.devline.studio/webhooks/bridge/heartbeat`.
 7. Configure `whatsapp-bridge/.env`.
 8. Run:
 

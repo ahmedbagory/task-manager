@@ -20,10 +20,13 @@ const logger = pino({
   level: process.env.LOG_LEVEL || 'info',
 });
 
-const WEBHOOK_URL = process.env.LARAVEL_WEBHOOK_URL || 'http://127.0.0.1:8000/webhooks/inbound-message';
-const HEARTBEAT_URL = process.env.LARAVEL_HEARTBEAT_URL || 'http://127.0.0.1:8000/webhooks/bridge/heartbeat';
-const OUTBOUND_PULL_URL = process.env.LARAVEL_OUTBOUND_PULL_URL || deriveOutboundUrl();
-const PUBLIC_BASE_URL = process.env.LARAVEL_PUBLIC_URL || derivePublicBaseUrl(WEBHOOK_URL);
+const PRODUCTION_APP_URL = 'https://task.devline.studio';
+const LOCAL_APP_URL = 'http://127.0.0.1:8000';
+const RUNNING_IN_PRODUCTION = isProductionEnvironment();
+const PUBLIC_BASE_URL = resolvePublicBaseUrl();
+const WEBHOOK_URL = resolveWebhookUrl();
+const HEARTBEAT_URL = resolveHeartbeatUrl();
+const OUTBOUND_PULL_URL = resolveOutboundPullUrl();
 const BRIDGE_SECRET = (process.env.BRIDGE_SECRET || '').trim();
 const CONFIGURED_GROUP_ID = normalizeGroupId(process.env.GROUP_ID || '');
 const CONFIGURED_GROUP_NAME = normalizeText(process.env.GROUP_NAME || '');
@@ -88,19 +91,146 @@ function ensureMediaDirectoriesExist() {
   }
 }
 
-function deriveOutboundUrl() {
-  const base = (process.env.LARAVEL_HEARTBEAT_URL || 'http://127.0.0.1:8000/webhooks/bridge/heartbeat')
-    .replace(/\/heartbeat\/?$/, '');
-  return base + '/outbound';
+function isProductionEnvironment() {
+  const environment = normalizeText(process.env.APP_ENV || process.env.NODE_ENV || '');
+
+  return environment !== null && environment.toLowerCase() === 'production';
+}
+
+function normalizeAbsoluteUrl(value) {
+  const text = normalizeText(value);
+
+  if (!text) {
+    return null;
+  }
+
+  try {
+    const url = new URL(text);
+    const path = url.pathname === '/' ? '' : url.pathname.replace(/\/$/, '');
+
+    return `${url.protocol}//${url.host}${path}${url.search}${url.hash}`;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function isUnsafeProductionUrl(url, expectedPrefix = '') {
+  try {
+    const parsed = new URL(url);
+    const path = parsed.pathname || '/';
+
+    if (parsed.protocol !== 'https:' || parsed.hostname !== 'task.devline.studio') {
+      return true;
+    }
+
+    if (parsed.port && parsed.port !== '443') {
+      return true;
+    }
+
+    if (expectedPrefix !== '' && !path.startsWith(expectedPrefix)) {
+      return true;
+    }
+
+    return false;
+  } catch (_error) {
+    return true;
+  }
+}
+
+function firstValidPublicUrl(...candidates) {
+  for (const candidate of candidates) {
+    const normalized = normalizeAbsoluteUrl(candidate);
+
+    if (!normalized) {
+      continue;
+    }
+
+    if (RUNNING_IN_PRODUCTION && isUnsafeProductionUrl(normalized)) {
+      continue;
+    }
+
+    return normalized;
+  }
+
+  return null;
 }
 
 function derivePublicBaseUrl(webhookUrl) {
-  try {
-    const url = new URL(webhookUrl);
-    return `${url.protocol}//${url.host}`;
-  } catch (_error) {
-    return 'http://127.0.0.1:8000';
+  const normalizedWebhookUrl = normalizeAbsoluteUrl(webhookUrl);
+
+  if (normalizedWebhookUrl) {
+    try {
+      const url = new URL(normalizedWebhookUrl);
+      const baseUrl = `${url.protocol}//${url.host}`;
+
+      if (!RUNNING_IN_PRODUCTION || !isUnsafeProductionUrl(baseUrl)) {
+        return baseUrl;
+      }
+    } catch (_error) {
+      // Ignore and use the environment fallback below.
+    }
   }
+
+  return fallbackPublicBaseUrl();
+}
+
+function derivePublicBaseUrlFromApiUrl(apiUrl) {
+  const normalizedApiUrl = normalizeAbsoluteUrl(apiUrl);
+
+  if (!normalizedApiUrl) {
+    return null;
+  }
+
+  return normalizedApiUrl.replace(/\/api\/?$/, '');
+}
+
+function resolvePublicBaseUrl() {
+  const resolved = firstValidPublicUrl(
+    process.env.PUBLIC_APP_URL,
+    process.env.LARAVEL_PUBLIC_URL,
+    process.env.LARAVEL_APP_URL,
+    process.env.APP_URL,
+    process.env.LARAVEL_URL,
+  ) || derivePublicBaseUrl(process.env.LARAVEL_WEBHOOK_URL)
+    || derivePublicBaseUrlFromApiUrl(process.env.LARAVEL_API_URL || process.env.API_BASE_URL);
+
+  return sanitizePublicBaseUrl(resolved);
+}
+
+function resolveWebhookUrl() {
+  return firstValidPublicUrl(
+    process.env.LARAVEL_WEBHOOK_URL,
+  ) || `${PUBLIC_BASE_URL}/webhooks/inbound-message`;
+}
+
+function resolveHeartbeatUrl() {
+  return firstValidPublicUrl(
+    process.env.LARAVEL_HEARTBEAT_URL,
+  ) || `${PUBLIC_BASE_URL}/webhooks/bridge/heartbeat`;
+}
+
+function resolveOutboundPullUrl() {
+  return firstValidPublicUrl(
+    process.env.LARAVEL_OUTBOUND_PULL_URL,
+  ) || `${PUBLIC_BASE_URL}/webhooks/bridge/outbound`;
+}
+
+function fallbackPublicBaseUrl() {
+  return RUNNING_IN_PRODUCTION ? PRODUCTION_APP_URL : LOCAL_APP_URL;
+}
+
+function sanitizePublicBaseUrl(url) {
+  const normalized = normalizeAbsoluteUrl(url);
+
+  if (!normalized) {
+    return fallbackPublicBaseUrl();
+  }
+
+  if (RUNNING_IN_PRODUCTION && isUnsafeProductionUrl(normalized)) {
+    return PRODUCTION_APP_URL;
+  }
+
+  return normalized;
 }
 
 function toBool(value, fallback) {
@@ -1384,6 +1514,8 @@ const apiServer = http.createServer(async (req, res) => {
   logger.info('Starting WhatsApp Web Bridge');
   ensureMediaDirectoriesExist();
   logger.info({
+    app_env: process.env.APP_ENV || process.env.NODE_ENV || 'development',
+    public_base_url: PUBLIC_BASE_URL,
     webhook_url: WEBHOOK_URL,
     heartbeat_url: HEARTBEAT_URL,
     outbound_pull_url: OUTBOUND_PULL_URL,

@@ -1,5 +1,22 @@
 <?php
 
+use App\Support\PublicUrl;
+
+$publicAppUrl = PublicUrl::resolveAppUrl(
+    appUrl: env('APP_URL'),
+    publicAppUrl: env('PUBLIC_APP_URL'),
+    laravelAppUrl: env('LARAVEL_APP_URL'),
+    environment: env('APP_ENV', 'production'),
+);
+
+$publicApiUrl = PublicUrl::resolveApiUrl(
+    apiUrl: env('LARAVEL_API_URL', env('API_BASE_URL')),
+    appUrl: env('APP_URL'),
+    publicAppUrl: env('PUBLIC_APP_URL'),
+    laravelAppUrl: env('LARAVEL_APP_URL'),
+    environment: env('APP_ENV', 'production'),
+);
+
 return [
 
     /*
@@ -52,7 +69,11 @@ return [
     |
     */
 
-    'url' => env('APP_URL', 'http://localhost'),
+    'url' => $publicAppUrl,
+
+    'public_url' => $publicAppUrl,
+
+    'api_url' => $publicApiUrl,
 
     /*
     |--------------------------------------------------------------------------

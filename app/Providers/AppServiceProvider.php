@@ -18,6 +18,7 @@ use App\Policies\WhatsappContactPolicy;
 use App\Policies\WhatsappMessagePolicy;
 use App\Support\Rbac;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 use Spatie\Permission\Models\Role;
 
@@ -36,6 +37,16 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        $publicUrl = trim((string) config('app.public_url', config('app.url', '')));
+
+        if (app()->environment('production') && $publicUrl !== '') {
+            URL::forceRootUrl($publicUrl);
+
+            if (parse_url($publicUrl, PHP_URL_SCHEME) === 'https') {
+                URL::forceScheme('https');
+            }
+        }
+
         Relation::enforceMorphMap([
             'user' => User::class,
             'department' => Department::class,
