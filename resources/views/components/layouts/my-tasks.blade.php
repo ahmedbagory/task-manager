@@ -22,7 +22,7 @@
                 <a href="{{ route('my-tasks.index') }}" class="rounded-md border border-slate-300 px-3 py-1.5 font-medium hover:bg-slate-50">
                     {{ __('My Tasks') }}
                 </a>
-                <a href="/admin" class="rounded-md border border-slate-300 px-3 py-1.5 font-medium hover:bg-slate-50">
+                <a href="{{ route('filament.admin.pages.dashboard-page') }}" class="rounded-md border border-slate-300 px-3 py-1.5 font-medium hover:bg-slate-50">
                     {{ __('Admin') }}
                 </a>
             </div>

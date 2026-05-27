@@ -39,14 +39,16 @@ class WhatsappConversationControllerTest extends TestCase
             ], 200),
         ]);
 
+        $conversationUrl = route('filament.admin.resources.whatsapp-messages.index', ['contact' => 1]);
+
         $response = $this->actingAs($dispatcher)
-            ->from('/admin/whatsapp-messages?contact=1')
+            ->from($conversationUrl)
             ->post(route('whatsapp.messages.send'), [
                 'phone' => '966500000000',
                 'body' => 'Outbound bridge test',
             ]);
 
-        $response->assertRedirect('/admin/whatsapp-messages?contact=1');
+        $response->assertRedirect($conversationUrl);
 
         Http::assertSentCount(1);
         Http::assertSent(fn ($request): bool => $request->url() === 'http://127.0.0.1:3001/send-message'
@@ -87,15 +89,17 @@ class WhatsappConversationControllerTest extends TestCase
             ], 200),
         ]);
 
+        $conversationUrl = route('filament.admin.resources.whatsapp-messages.index', ['contact' => 1]);
+
         $response = $this->actingAs($dispatcher)
-            ->from('/admin/whatsapp-messages?contact=1')
+            ->from($conversationUrl)
             ->post(route('whatsapp.messages.send'), [
                 'phone' => '966500000010',
                 'body' => 'Please check the file.',
                 'attachment' => UploadedFile::fake()->create('report.pdf', 100, 'application/pdf'),
             ]);
 
-        $response->assertRedirect('/admin/whatsapp-messages?contact=1');
+        $response->assertRedirect($conversationUrl);
 
         Http::assertSent(function ($request): bool {
             $attachment = $request['attachment'] ?? [];
@@ -154,11 +158,13 @@ class WhatsappConversationControllerTest extends TestCase
             'failed_reason' => 'Bridge offline',
         ]);
 
+        $conversationUrl = route('filament.admin.resources.whatsapp-messages.index', ['contact' => 1]);
+
         $response = $this->actingAs($dispatcher)
-            ->from('/admin/whatsapp-messages?contact=1')
+            ->from($conversationUrl)
             ->post(route('whatsapp.messages.retry', $message));
 
-        $response->assertRedirect('/admin/whatsapp-messages?contact=1');
+        $response->assertRedirect($conversationUrl);
 
         $this->assertDatabaseHas('whatsapp_messages', [
             'id' => $message->id,

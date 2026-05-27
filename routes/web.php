@@ -7,9 +7,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Validation\Rule;
 
-Route::get('/', function () {
-    return view('welcome');
-});
+Route::redirect('/admin/login', '/login');
+Route::redirect('/admin', '/');
 
 Route::post('/locale', function (Request $request) {
     $validated = $request->validate([
@@ -20,8 +19,6 @@ Route::post('/locale', function (Request $request) {
 
     return back();
 })->name('locale.switch');
-
-Route::get('/login', fn () => redirect('/admin/login'))->name('login');
 
 Route::middleware('auth')->group(function (): void {
     Route::get('/my-tasks', [MyTaskWorkspaceController::class, 'index'])->name('my-tasks.index');
