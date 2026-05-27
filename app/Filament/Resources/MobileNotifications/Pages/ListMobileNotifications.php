@@ -6,6 +6,7 @@ use App\Enums\MobileNotificationStatus;
 use App\Filament\Resources\MobileNotifications\MobileNotificationResource;
 use App\Filament\Resources\MobileNotifications\Widgets\NotificationStatsWidget;
 use App\Models\MobileNotification;
+use Filament\Actions\Action;
 use Filament\Actions\CreateAction;
 use Filament\Pages\Concerns\ExposesTableToWidgets;
 use Filament\Resources\Pages\ListRecords;
@@ -20,6 +21,11 @@ class ListMobileNotifications extends ListRecords
     protected function getHeaderActions(): array
     {
         return [
+            Action::make('scheduled')
+                ->label(__('جدولة التنبيهات'))
+                ->icon('heroicon-o-clock')
+                ->color('gray')
+                ->url(MobileNotificationResource::getUrl('scheduled')),
             CreateAction::make()
                 ->icon('heroicon-o-paper-airplane')
                 ->label(__('Send Notification')),

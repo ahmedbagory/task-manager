@@ -4,6 +4,7 @@ namespace App\Filament\Resources\MobileNotifications;
 
 use App\Filament\Resources\MobileNotifications\Pages\CreateMobileNotification;
 use App\Filament\Resources\MobileNotifications\Pages\ListMobileNotifications;
+use App\Filament\Resources\MobileNotifications\Pages\ManageScheduledRules;
 use App\Filament\Resources\MobileNotifications\Pages\ViewMobileNotification;
 use App\Filament\Resources\MobileNotifications\RelationManagers\RecipientsRelationManager;
 use App\Filament\Resources\MobileNotifications\Schemas\MobileNotificationForm;
@@ -61,6 +62,7 @@ class MobileNotificationResource extends Resource
             'index' => ListMobileNotifications::route('/'),
             'create' => CreateMobileNotification::route('/create'),
             'view' => ViewMobileNotification::route('/{record}'),
+            'scheduled' => ManageScheduledRules::route('/scheduled'),
         ];
     }
 
