@@ -144,17 +144,7 @@
                     </div>
 
                     <div class="flex items-center gap-2">
-                        @if (in_array($attachment->id, $previewItemIds, true))
-                            <x-filament::button
-                                color="gray"
-                                outlined
-                                size="sm"
-                                type="button"
-                                @click="select({{ $attachment->id }})"
-                            >
-                                {{ __('معاينة') }}
-                            </x-filament::button>
-                        @elseif ($attachment->mime_type === 'application/pdf')
+                        @if (! in_array($attachment->id, $previewItemIds, true) && $attachment->mime_type === 'application/pdf')
                             <x-filament::button
                                 color="gray"
                                 outlined
