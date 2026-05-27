@@ -2,6 +2,7 @@
 
 namespace App\Providers\Filament;
 
+use App\Filament\Dashboard\DashboardPage;
 use App\Filament\Pages\ApiSettings;
 use App\Filament\Pages\WhatsAppSession;
 use App\Filament\Resources\Departments\DepartmentResource;
@@ -19,7 +20,6 @@ use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
 use Filament\Navigation\MenuItem;
-use Filament\Pages\Dashboard;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Enums\ThemeMode;
@@ -104,7 +104,7 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\Filament\Pages')
             ->pages([
-                Dashboard::class,
+                DashboardPage::class,
             ])
             ->databaseNotifications()
             ->databaseNotificationsPolling('30s')
