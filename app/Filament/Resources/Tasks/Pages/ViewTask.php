@@ -376,6 +376,9 @@ class ViewTask extends ViewRecord
                 FileUpload::make('attachment')
                     ->label(__('الملف'))
                     ->required()
+                    ->validationMessages([
+                        'required' => __('يرجى اختيار ملف أولًا'),
+                    ])
                     ->storeFiles(false)
                     ->maxSize(10 * 1024)
                     ->acceptedFileTypes([
@@ -397,7 +400,16 @@ class ViewTask extends ViewRecord
                 $task = $this->getTask();
                 $file = $data['attachment'] ?? null;
 
+                if (is_array($file)) {
+                    $file = array_values($file)[0] ?? null;
+                }
+
                 if (! $file instanceof TemporaryUploadedFile) {
+                    Notification::make()
+                        ->title(__('يرجى اختيار ملف أولًا'))
+                        ->danger()
+                        ->send();
+
                     return;
                 }
 
